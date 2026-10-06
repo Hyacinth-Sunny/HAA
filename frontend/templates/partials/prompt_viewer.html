@@ -1,0 +1,8 @@
+{# read-only prompt content (context: prompt dict, lang) #}
+<div id="prompt-viewer">
+  <div class="row" style="justify-content:space-between;">
+    <span class="mono muted">{{ prompt.name }}.md</span>
+    <button class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('prompt-content').innerText)">📋 {% if lang == 'zh' %}复制{% else %}Copy{% endif %}</button>
+  </div>
+  <div id="prompt-content" class="pre-scroll md-body">{{ prompt.content | md }}</div>
+</div>

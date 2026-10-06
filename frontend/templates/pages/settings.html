@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% block title %}{% if lang == 'zh' %}设置{% else %}Settings{% endif %}{% endblock %}
+{% block content %}
+<h1>{% if lang == 'zh' %}设置{% else %}Settings{% endif %}</h1>
+<div class="muted" style="margin-bottom:1rem;">{% if lang == 'zh' %}修改后点击「保存」生效。更改对<strong>新操作</strong>立即生效，进行中的运行不受影响。{% else %}Click <strong>Save</strong> to apply. Changes take effect for <strong>new</strong> operations; in-progress runs are unaffected.{% endif %}</div>
+
+<div class="tabs" id="settings-tabs">
+  <button class="active" data-tab="general">{% if lang == 'zh' %}通用{% else %}General{% endif %}</button>
+  <button data-tab="p1">P1</button>
+  <button data-tab="p2">P2</button>
+  <button data-tab="budget">{% if lang == 'zh' %}预算{% else %}Budget{% endif %}</button>
+  <button data-tab="tools">{% if lang == 'zh' %}工具/超时{% else %}Tools/Timeouts{% endif %}</button>
+  <button data-tab="advanced">{% if lang == 'zh' %}高级{% else %}Advanced{% endif %}</button>
+</div>
+
+<!-- ===== General ===== -->
+<div class="tab-panel active" id="tab-general">
+  <div class="section">
+    <h3>{% if lang == 'zh' %}语言 / Language{% endif %}</h3>
+    <p>{% if lang == 'zh' %}点击右上角 🌐 按钮切换中/英文。{% else %}Use the 🌐 button in the top-right to toggle Chinese/English.{% endif %}</p>
+  </div>
+  <div class="setting-row">
+    <label class="mono">logging.level</label>
+    <span class="lbl">{% if lang == 'zh' %}日志级别{% else %}Log Level{% endif %}</span>
+    <select data-key="logging.level" data-type="str">
+      {% for lv in ["DEBUG", "INFO", "WARNING", "ERROR"] %}
+      <option value="{{ lv }}" {{ 'selected' if config.logging.level == lv else '' }}>{{ lv }}</option>
+      {% endfor %}
+    </select>
+    <div class="help">{% if lang == 'zh' %}控制日志输出详细程度。DEBUG 最详（含每次工具调用），WARNING+ 只显示问题。{% else %}Controls log verbosity. DEBUG is most detailed; WARNING+ only shows problems.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">logging.format</label>
+    <span class="lbl">{% if lang == 'zh' %}日志格式{% else %}Log Format{% endif %}</span>
+    <select data-key="logging.format" data-type="str">
+      <option value="text" {{ 'selected' if config.logging.format == 'text' else '' }}>text</option>
+      <option value="json" {{ 'selected' if config.logging.format == 'json' else '' }}>json</option>
+    </select>
+    <div class="help">{% if lang == 'zh' %}text 适合人类阅读，json 适合日志聚合系统。{% else %}text for human reading; json for log aggregation systems.{% endif %}</div>
+  </div>
+  <button class="btn btn-primary" onclick="saveConfig('general')">{% if lang == 'zh' %}保存{% else %}Save{% endif %}</button>
+</div>
+
+<!-- ===== P1 ===== -->
+<div class="tab-panel" id="tab-p1">
+  <div class="banner banner-blue" style="margin-bottom:12px;">
+    {% if lang == 'zh' %}P1 流水线（SEEK→…→PUBLISHED）的超参数。这些是<strong>全局默认值</strong>，新建项目时可在项目级别覆盖。{% else %}P1 pipeline (SEEK→…→PUBLISHED) hyperparameters. These are <strong>global defaults</strong>; individual projects can override at creation.{% endif %}
+  </div>
+  {{ _setting_num('pipeline.seek_candidate_count', config.pipeline.seek_candidate_count, 'SEEK 基数 / SEEK Count', 'SEEK 阶段产出多少个候选 idea / How many candidate ideas SEEK generates', 'zh', lang, 1, 100) if false else '' }}
+  <div class="setting-row">
+    <label class="mono">seek_candidate_count</label>
+    <span class="lbl">{% if lang == 'zh' %}SEEK 基数{% else %}SEEK Count{% endif %}</span>
+    <input type="number" data-key="pipeline.seek_candidate_count" data-type="int" value="{{ config.pipeline.seek_candidate_count }}" min="1" max="100">
+    <div class="help">{% if lang == 'zh' %}SEEK 阶段产出的候选 idea 数量。越多=覆盖面越广，但花费更多。{% else %}Number of candidate ideas SEEK generates. More = wider coverage but higher cost.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">output_candidate_count</label>
+    <span class="lbl">{% if lang == 'zh' %}输出候选上限{% else %}Output Cap{% endif %}</span>
+    <input type="number" data-key="pipeline.output_candidate_count" data-type="int" value="{{ config.pipeline.output_candidate_count }}" min="1" max="20">
+    <div class="help">{% if lang == 'zh' %}SEEK 后幸存到 NOVELTY/SCREEN 筛查的候选上限。按 significance×win_odds 排序取 top-K。{% else %}Max candidates surviving SEEK to enter NOVELTY/SCREEN filtering. Top-K by significance×win_odds.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">max_design_rounds</label>
+    <span class="lbl">{% if lang == 'zh' %}DESIGN⇄VERIFY 循环上限{% else %}Design-Verify Rounds{% endif %}</span>
+    <input type="number" data-key="pipeline.max_design_rounds" data-type="int" value="{{ config.pipeline.max_design_rounds }}" min="1" max="10">
+    <div class="help">{% if lang == 'zh' %}DESIGN→VERIFY→DESIGN 循环最多几轮。VERIFY 找到反例就回 DESIGN 重做，封顶后放行。{% else %}Max DESIGN→VERIFY→DESIGN rounds. If VERIFY finds a counterexample, loop back to DESIGN; cap forces progression.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">max_exp_rounds</label>
+    <span class="lbl">{% if lang == 'zh' %}EXP_SPEC⇄EXP_FEASIBILITY 循环上限{% else %}Exp Spec-Feasibility Rounds{% endif %}</span>
+    <input type="number" data-key="pipeline.max_exp_rounds" data-type="int" value="{{ config.pipeline.max_exp_rounds }}" min="1" max="10">
+    <div class="help">{% if lang == 'zh' %}实验设计规格与可行性检验的循环上限。{% else %}Max rounds between experiment specification and feasibility checking.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">max_review_rounds</label>
+    <span class="lbl">{% if lang == 'zh' %}REVIEW⇄REFINE 循环上限{% else %}Review-Refine Rounds{% endif %}</span>
+    <input type="number" data-key="pipeline.max_review_rounds" data-type="int" value="{{ config.pipeline.max_review_rounds }}" min="1" max="10">
+    <div class="help">{% if lang == 'zh' %}审稿→精修循环最多几轮。封顶后强制发布（标记 degraded）。{% else %}Max review→refine rounds. Cap forces publication (marked degraded).{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">review_accept_threshold</label>
+    <span class="lbl">{% if lang == 'zh' %}REVIEW 接受阈值{% else %}Review Accept Threshold{% endif %}</span>
+    <input type="number" step="0.05" data-key="pipeline.review_accept_threshold" data-type="float" value="{{ config.pipeline.review_accept_threshold }}" min="0" max="1">
+    <div class="help">{% if lang == 'zh' %}四路均分≥此值直接接受；低于则进 REFINE 循环（smoke5/6 的 0.667/0.675 死在旧硬编码 0.7 上）。{% else %}Panel mean ≥ this → accept; otherwise the REFINE loop runs.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">max_exp_to_design_rounds</label>
+    <span class="lbl">{% if lang == 'zh' %}EXP→DESIGN 外循环上限{% else %}Exp-to-Design Rounds{% endif %}</span>
+    <input type="number" data-key="pipeline.max_exp_to_design_rounds" data-type="int" value="{{ config.pipeline.max_exp_to_design_rounds }}" min="0" max="5">
+    <div class="help">{% if lang == 'zh' %}实验不可行时回 DESIGN 重新设计方案的外循环上限。0=不可回。{% else %}Max outer loop from EXP back to DESIGN when experimentally infeasible. 0=disabled.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">auto_approve_human_review</label>
+    <span class="lbl">{% if lang == 'zh' %}自动放行实验设计审核{% else %}Auto-approve HUMAN_REVIEW{% endif %}</span>
+    <div class="yesno" data-key="pipeline.auto_approve_human_review" data-type="bool" data-val="{{ config.pipeline.auto_approve_human_review | lower }}">
+      <button type="button" class="yn-btn {{ 'yn-active' if config.pipeline.auto_approve_human_review else '' }}" onclick="setYN(this, true)">Yes</button>
+      <button type="button" class="yn-btn {{ 'yn-active' if not config.pipeline.auto_approve_human_review else '' }}" onclick="setYN(this, false)">No</button>
+    </div>
+    <div class="help">{% if lang == 'zh' %}批量 P1 时是否自动通过 HUMAN_REVIEW 门控。Yes=批量自动跑完，No=逐个暂停等人工确认实验设计。{% else %}Whether to auto-pass HUMAN_REVIEW gate during P1 batch. Yes=batch runs autonomously; No=pause for human approval of each experiment design.{% endif %}</div>
+  </div>
+  <button class="btn btn-primary" onclick="saveConfig('p1')">{% if lang == 'zh' %}保存{% else %}Save{% endif %}</button>
+</div>
+
+<!-- ===== P2 ===== -->
+<div class="tab-panel" id="tab-p2">
+  <div class="banner banner-blue" style="margin-bottom:12px;">
+    {% if lang == 'zh' %}P2 实验执行（CODE_GEN→DebugSession→ANALYZE）的超参数。{% else %}P2 experiment execution (CODE_GEN→DebugSession→ANALYZE) hyperparameters.{% endif %}
+  </div>
+  <div class="setting-row">
+    <label class="mono">beam_search_width</label>
+    <span class="lbl">{% if lang == 'zh' %}Beam-Search 宽度{% else %}Beam Width{% endif %}</span>
+    <input type="number" data-key="p2.beam_search_width" data-type="int" value="{{ hp_defaults.beam_search_width }}" min="1" max="10">
+    <div class="help">{% if lang == 'zh' %}同一实验设计生成几种代码方案，第一个失败换下一个。{% else %}Number of code variants generated per experiment spec; try next if first fails.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">ssh.host</label>
+    <span class="lbl">{% if lang == 'zh' %}SSH 服务器{% else %}SSH Host{% endif %}</span>
+    <input type="text" data-key="ssh.host" data-type="str" value="{{ config.ssh.host }}" placeholder="user@hostname">
+    <div class="help">{% if lang == 'zh' %}远程实验服务器地址。留空=使用本地执行（LocalDebugTransport）。{% else %}Remote experiment server address. Empty=local execution.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">ssh.user</label>
+    <span class="lbl">{% if lang == 'zh' %}SSH 用户名{% else %}SSH User{% endif %}</span>
+    <input type="text" data-key="ssh.user" data-type="str" value="{{ config.ssh.user }}">
+    <div class="help">{% if lang == 'zh' %}远程服务器登录用户名。{% else %}Remote server login username.{% endif %}</div>
+  </div>
+  <button class="btn btn-primary" onclick="saveConfig('p2')">{% if lang == 'zh' %}保存{% else %}Save{% endif %}</button>
+</div>
+
+<!-- ===== Budget ===== -->
+<div class="tab-panel" id="tab-budget">
+  <div class="setting-row">
+    <label class="mono">budget.per_campaign</label>
+    <span class="lbl">{% if lang == 'zh' %}单 Campaign 预算上限{% else %}Per-campaign Budget Cap{% endif %}</span>
+    <input type="number" data-key="budget.per_campaign" data-type="float" value="{{ config.budget.per_campaign }}" min="0.1" step="0.5">
+    <div class="help">{% if lang == 'zh' %}单个 Campaign（scout/worker）的最大花费（美元）。超了优雅退出。{% else %}Max spend (USD) per campaign. Graceful exit on exhaustion.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">budget.global_limit</label>
+    <span class="lbl">{% if lang == 'zh' %}全局预算上限{% else %}Global Budget Cap{% endif %}</span>
+    <input type="number" data-key="budget.global_limit" data-type="float" value="{{ config.budget.global_limit }}" min="1" step="5">
+    <div class="help">{% if lang == 'zh' %}所有 Campaign 合计的最大花费。超了所有新调用被拒。{% else %}Max total spend across all campaigns. New calls blocked when exceeded.{% endif %}</div>
+  </div>
+  <button class="btn btn-primary" onclick="saveConfig('budget')">{% if lang == 'zh' %}保存{% else %}Save{% endif %}</button>
+</div>
+
+<!-- ===== Tools/Timeouts ===== -->
+<div class="tab-panel" id="tab-tools">
+  <div class="banner banner-amber" style="margin-bottom:12px;">
+    {% if lang == 'zh' %}工具层超时与限制参数。冒烟测试发现部分超时偏短（见核查报告）。{% else %}Tool-layer timeouts and limits. Smoke testing found some timeouts too short (see audit report).{% endif %}
+  </div>
+  <div class="setting-row">
+    <label class="mono">tools.exec_bash.timeout</label>
+    <span class="lbl">{% if lang == 'zh' %}Bash 执行超时{% else %}Bash Execution Timeout{% endif %}</span>
+    <input type="number" data-key="tools.exec_bash.timeout" data-type="int" value="{{ config.tools.exec_bash.timeout }}" min="5" max="300">
+    <div class="help">{% if lang == 'zh' %}⚠ 冒烟发现 SCREEN 阶段 30s 不够（构造反例代码被杀）。建议 60-90s。{% else %}⚠ Smoke found 30s insufficient for SCREEN (counterexample code killed). Recommend 60-90s.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">tools.web_fetch.timeout</label>
+    <span class="lbl">{% if lang == 'zh' %}网页抓取超时{% else %}Web Fetch Timeout{% endif %}</span>
+    <input type="number" data-key="tools.web_fetch.timeout" data-type="int" value="{{ config.tools.web_fetch.timeout }}" min="5" max="120">
+    <div class="help">{% if lang == 'zh' %}抓取单个网页的超时时间（秒）。{% else %}Timeout for fetching a single web page (seconds).{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">tools.web_fetch.max_chars</label>
+    <span class="lbl">{% if lang == 'zh' %}网页抓取截断{% else %}Web Fetch Truncation{% endif %}</span>
+    <input type="number" data-key="tools.web_fetch.max_chars" data-type="int" value="{{ config.tools.web_fetch.max_chars }}" min="1000" max="100000" step="1000">
+    <div class="help">{% if lang == 'zh' %}抓取的网页文本最大字符数。超长截断。{% else %}Max characters of fetched web text. Truncated beyond this.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">tools.web_search.max_results</label>
+    <span class="lbl">{% if lang == 'zh' %}搜索结果数{% else %}Search Results Count{% endif %}</span>
+    <input type="number" data-key="tools.web_search.max_results" data-type="int" value="{{ config.tools.web_search.max_results }}" min="1" max="20">
+    <div class="help">{% if lang == 'zh' %}web_search 每次返回的最大结果数。{% else %}Max results returned per web_search call.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">timeouts.llm</label>
+    <span class="lbl">{% if lang == 'zh' %}LLM 调用超时{% else %}LLM Call Timeout{% endif %}</span>
+    <input type="number" data-key="timeouts.llm" data-type="int" value="{{ config.timeouts.llm }}" min="30" max="600">
+    <div class="help">{% if lang == 'zh' %}单次 LLM API 调用的超时（秒）。太短=假失败，太长=卡死。{% else %}Timeout per LLM API call (seconds). Too short=false failures; too long=hangs.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">timeouts.stage</label>
+    <span class="lbl">{% if lang == 'zh' %}Stage 总超时{% else %}Stage Total Timeout{% endif %}</span>
+    <input type="number" data-key="timeouts.stage" data-type="int" value="{{ config.timeouts.stage }}" min="60" max="3600">
+    <div class="help">{% if lang == 'zh' %}单个 stage 的总执行超时（秒），含所有工具调用。{% else %}Total execution timeout per stage (seconds), including all tool calls.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">tools.file_ops.max_file_size_mb</label>
+    <span class="lbl">{% if lang == 'zh' %}文件大小上限{% else %}Max File Size{% endif %}</span>
+    <input type="number" data-key="tools.file_ops.max_file_size_mb" data-type="int" value="{{ config.tools.file_ops.max_file_size_mb }}" min="1" max="100">
+    <div class="help">{% if lang == 'zh' %}read_file/write_file 允许的最大文件大小（MB）。{% else %}Max file size (MB) for read_file/write_file.{% endif %}</div>
+  </div>
+  <button class="btn btn-primary" onclick="saveConfig('tools')">{% if lang == 'zh' %}保存{% else %}Save{% endif %}</button>
+</div>
+
+<!-- ===== Advanced ===== -->
+<div class="tab-panel" id="tab-advanced">
+  <div class="banner banner-red" style="margin-bottom:12px;">
+    ⚠ {% if lang == 'zh' %}以下设置随意更改可能导致系统无法运行或安全问题。<strong>修改前请充分理解。</strong>{% else %}Changing these may break the system or create security risks. <strong>Understand fully before modifying.</strong>{% endif %}
+  </div>
+  <div class="setting-row">
+    <label class="mono">llm.model</label>
+    <span class="lbl">{% if lang == 'zh' %}主模型{% else %}Primary Model{% endif %}</span>
+    <input type="text" data-key="llm.model" data-type="str" value="{{ config.llm.model }}">
+    <div class="help">{% if lang == 'zh' %}litellm 模型字符串（如 deepseek/deepseek-chat、glm-5.2）。能力直接影响产出质量。{% else %}litellm model string (e.g. deepseek/deepseek-chat, glm-5.2). Capability directly affects quality.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">llm.api_key_env</label>
+    <span class="lbl">{% if lang == 'zh' %}API Key 环境变量名{% else %}API Key Env Var{% endif %}</span>
+    <input type="text" data-key="llm.api_key_env" data-type="str" value="{{ config.llm.api_key_env }}">
+    <div class="help">{% if lang == 'zh' %}从哪个环境变量读 API key（不存 key 本身）。改了就读不到 key。{% else %}Which env var holds the API key. Changing this may lose key access.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">llm.api_base</label>
+    <span class="lbl">{% if lang == 'zh' %}API Base URL{% else %}API Base URL{% endif %}</span>
+    <input type="text" data-key="llm.api_base" data-type="str" value="{{ config.llm.api_base }}">
+    <div class="help">{% if lang == 'zh' %}API 基地址（留空=用 litellm 内置路由）。自托管/代理时填写。{% else %}API base URL (empty=litellm built-in routing). For self-hosted/proxy.{% endif %}</div>
+  </div>
+  <div class="setting-row">
+    <label class="mono">acp.acpx_path</label>
+    <span class="lbl">{% if lang == 'zh' %}acpx 路径{% else %}acpx Path{% endif %}</span>
+    <input type="text" data-key="acp.acpx_path" data-type="str" value="{{ config.acp.acpx_path }}" placeholder="(auto-detect)">
+    <div class="help">{% if lang == 'zh' %}ACP CLI 路径。留空=自动探测（OpenClaw bundled > which > npx）。{% else %}ACP CLI path. Empty=auto-detect.{% endif %}</div>
+  </div>
+
+  <div class="section">
+    <h3>{% if lang == 'zh' %}系统提示词查看器{% else %}System Prompts Viewer{% endif %}</h3>
+    <div class="banner banner-amber" style="margin-bottom:8px;">
+      ⚠ {% if lang == 'zh' %}提示词是 HAA 的核心智能来源。修改源文件 prompts/*..md 会直接影响产出质量。{% else %}Prompts are HAA's core intelligence. Editing prompts/*.md directly affects output quality.{% endif %}
+    </div>
+    <label>{% if lang == 'zh' %}选择提示词{% else %}Select prompt{% endif %}</label>
+    <select id="prompt-select" onchange="loadPrompt(this.value)">
+      {% for name in prompt_names %}
+      <option value="{{ name }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+    <div id="prompt-viewer" style="margin-top:10px;"></div>
+  </div>
+  <button class="btn btn-primary" onclick="saveConfig('advanced')">{% if lang == 'zh' %}保存{% else %}Save{% endif %}</button>
+</div>
+
+<div id="toast" class="toast" style="display:none;"></div>
+
+<script>
+  // Tab switching
+  document.querySelectorAll('#settings-tabs button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('#settings-tabs button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Yes/No toggle
+  function setYN(btn, val) {
+    const container = btn.parentElement;
+    container.dataset.val = val;
+    container.querySelectorAll('.yn-btn').forEach(b => b.classList.remove('yn-active'));
+    btn.classList.add('yn-active');
+  }
+
+  // Save config for a tab
+  function saveConfig(tab) {
+    const panel = document.getElementById('tab-' + tab);
+    const updates = {};
+    panel.querySelectorAll('[data-key]').forEach(el => {
+      let val;
+      if (el.dataset.type === 'bool') {
+        val = el.dataset.val === 'true';
+      } else if (el.dataset.type === 'int') {
+        val = parseInt(el.value);
+      } else if (el.dataset.type === 'float') {
+        val = parseFloat(el.value);
+      } else {
+        val = el.value;
+      }
+      updates[el.dataset.key] = val;
+    });
+    if (Object.keys(updates).length === 0) { showToast('ℹ️ ' + '{% if lang == "zh" %}无可保存的更改{% else %}No changes to save{% endif %}'); return; }
+    fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(updates)
+    }).then(r => r.json()).then(data => {
+      showToast('✅ ' + '{% if lang == "zh" %}设置已保存，新操作生效{% else %}Settings saved; takes effect for new ops{% endif %}');
+    }).catch(err => {
+      showToast('❌ ' + '{% if lang == "zh" %}保存失败{% else %}Save failed{% endif %}: ' + err, true);
+    });
+  }
+
+  function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast' + (isError ? ' toast-error' : ' toast-ok');
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+  }
+
+  // Prompt viewer
+  function loadPrompt(name) {
+    htmx.ajax('GET', '/partials/prompts/' + encodeURIComponent(name) + '?lang={{ lang }}', { target: '#prompt-viewer' });
+  }
+  // Load first prompt on page load
+  document.addEventListener('DOMContentLoaded', function() {
+    const sel = document.getElementById('prompt-select');
+    if (sel && sel.value) loadPrompt(sel.value);
+  });
+</script>
+{% endblock %}

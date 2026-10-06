@@ -1,0 +1,187 @@
+# HAA default configuration.
+# Override values by editing this file or setting the HAA_CONFIG env var
+# to point at another YAML file.
+
+# --- LLM ---------------------------------------------------------------------
+llm:
+  # litellm model string, e.g. "deepseek/deepseek-chat", "gpt-4o", "openai/glm-4".
+  # 切 GLM-5.3-flash：用 config/glm-flash.yaml（openai/glm-5.3-flash + 智谱
+  # api_base + provider_options.tool_stream —— GLM 流式工具调用的硬需求）。
+  model: "deepseek/deepseek-v4-pro"
+  # Max retries on transient failure (HM-Pro Lesson 7), with exponential backoff.
+  max_retries: 2
+  # API base override (empty = provider default). Required for self-hosted / GLM.
+  api_base: ""
+  # Name of the env var holding the API key (read at call time, not stored here).
+  api_key_env: "DEEPSEEK_API_KEY"
+  # multi_agents 子代理模型（空 = 复用主模型）。子代理是单次无工具调用，
+  # 用轻量 flash 模型省成本。
+  sub_agent_model: "deepseek/deepseek-v4-flash"
+
+# --- Timeouts ---------------------------------------------------------------
+# HM-Pro Lesson 7: every call MUST time out. Three layers (smoke4 双闸改造):
+#   llm      — 流式化后 = 相邻 chunk 间隔上限（空闲闸）：长尾生成（实证
+#              44-72 tok/s 持续吐字节）永不触发，真挂死 300s 无字节即断。
+#   llm_wall — 单次调用总墙钟（生成失控保险丝；实证最长合法调用 1041s）。
+#   stage    — 单阶段墙钟（agent-loop 迭代间检查，超时按工具帽同款收尾）。
+timeouts:
+  llm: 300        # chunk 间空闲上限 (seconds)
+  llm_wall: 1800  # 单调用总墙钟 (seconds)
+  stage: 3600     # 单阶段墙钟 (seconds)
+
+# --- Budget ------------------------------------------------------------------
+# Dual-layer: per-campaign cap + global cap. Pre-deducted before each call so
+# a crash mid-call cannot overspend (HM-Pro Lesson 5 + crash-safety).
+budget:
+  # Cap on a single campaign (USD).
+  per_campaign: 10.0
+  # Cap across ALL campaigns (USD).
+  global_limit: 100.0
+
+# --- Pipeline knobs ----------------------------------------------------------
+pipeline:
+  # DESIGN ⇄ VERIFY loop ceiling (HM-Pro: "max 2-3 rounds").
+  max_design_rounds: 3
+  # REVIEW ⇄ REFINE loop ceiling.
+  max_review_rounds: 3
+  # 四路 REVIEW 均分的接受线（v1.0.5 配置化；冒烟实证 0.667/0.675 卡死在 0.7）。
+  review_accept_threshold: 0.7
+  # Number of candidates SEEK should produce.
+  seek_candidate_count: 5
+  # How many candidates survive SEEK to enter NOVELTY/SCREEN filtering (P1 batch).
+  # The top-K by significance×win_odds are kept; the rest are marked FILTERED.
+  output_candidate_count: 3
+  # Per-stage tool-call cap overrides (key = uppercase stage name). v1.0.2 显式
+  # 化并按 smoke4 数据重校：VERIFY 撞 20 帽 4 次、NOVELTY/SCREEN/EXP_* 各撞
+  # 2 次（截断后 wrap-up 仍出判决但压缩审查空间）；DESIGN 33<50、GRADE 1<5
+  # 未触顶不动。DESIGN/VERIFY deliberately generous: budget gating is the
+  # real cost backstop.
+  stage_tool_limits:
+    SEEK: 12
+    NOVELTY: 10
+    SCREEN: 8
+    DESIGN: 50
+    VERIFY: 30
+    GRADE: 5
+    WRITE: 12       # smoke6: WRITE 撞 8 帽；论文前半部教学需分章 write_file
+    REVIEW: 2
+    REFINE: 6        # smoke6: 三轮 REFINE 全撞 3 帽
+    EXP_SPEC: 14
+    EXP_FEASIBILITY: 12
+
+# --- Web server --------------------------------------------------------------
+server:
+  host: "0.0.0.0"
+  port: 8420
+
+# --- Storage -----------------------------------------------------------------
+storage:
+  # SQLite database location (relative to project root).
+  db_path: "data/haa.db"
+  # Runtime working dir per campaign.
+  campaigns_dir: "data/campaigns"
+
+# --- Tools (Phase 2: function-calling sandbox) -------------------------------
+# Per-tool settings consumed by haa/llm/tools.py. Each tool is gated to a set
+# of stages; the pipeline filters the registry by the active stage. Safety:
+# file ops are sandboxed to the campaign dir; exec_bash blocks dangerous
+# patterns and times out (HM-Pro Lesson 7).
+tools:
+  web_search:
+    # Provider backend. Only "tavily" is wired up here.
+    provider: "tavily"
+    # Name of the env var holding the API key (read at call time).
+    api_key_env: "TAVILY_API_KEY"
+    max_results: 5
+  web_fetch:
+    timeout: 30        # per fetch (seconds)
+    max_chars: 10000   # truncate returned text
+  exec_bash:
+    timeout: 30        # per command (seconds)
+    # Substring patterns that are refused outright.
+    blocked_commands:
+      - "rm -rf"
+      - "sudo "
+      - "shutdown"
+      - "reboot"
+      - "mkfs"
+      - "dd if="
+      - ":(){"
+      - "nc -l"
+      - "chmod 777"
+  file_ops:
+    # Roots file read/write may touch (in addition to the campaign dir).
+    allowed_paths:
+      - "data/campaigns/"
+      - "data/"
+    max_file_size_mb: 10
+  search_paper:
+    provider: "semantic_scholar"
+    api_key_env: ""    # Semantic Scholar v1 needs no key
+    max_results: 10
+  # 循环内上下文压缩（smoke4：工具结果全文进 messages，DESIGN 峰值 51.7K in）。
+  # read_file 独立大帽——22KB 级知识文件必须整读。
+  agent_result_max_chars: 8000
+  read_file_result_max_chars: 30000
+  # 论文全文获取（v1.0.6-rev3）：发现链 本地库(opt-in)→OpenAlex→arXiv→
+  # Unpaywall→PMC→S2；逐源容错。本地库由 OpenClaw 等辅助离线采集（刊物
+  # 目录结构），标题模糊匹配，开启后必填 dir。
+  fulltext:
+    email: "N5_yzh@163.com"      # Unpaywall polite-pool（须真实格式）
+    timeout_s: 90                 # 单次下载读超时（30s 在 NAT 网络不够）
+    max_mb: 30
+    retries: 2                    # arXiv DNS 间歇实证需要
+    local_library:
+      enabled: false              # 默认关；开启需指定 dir
+      dir: ""                     # 例："/home/hyacinth-sunny/papers"
+
+# --- Logging (Phase 6a-fronted) ----------------------------------------------
+# Without this, Python's root logger uses the lastResort handler and every
+# logger.info() in the LLM client / agent loop is silently dropped. setup_logging
+# (haa/observability.py) wires real handlers so per-call token/cost lines and
+# structured events are actually visible.
+logging:
+  level: "INFO"        # DEBUG | INFO | WARNING | ERROR
+  format: "text"       # text | json
+  output: "stdout"     # stdout | file
+  file_path: "data/haa.log"
+
+# --- SSH (Phase B: 远程实验执行) ---------------------------------------------
+# Part II 远程实验的 SSH 配置。host 为空时远程执行不可用（本地开发时留空）。
+ssh:
+  host: ""                        # 远程服务器地址
+  user: ""
+  key_path: "~/.ssh/id_rsa"
+  remote_base_dir: "~/haa_runs"
+  poll_interval_s: 30             # 轮询间隔（秒）
+  poll_timeout_s: 3600            # 最大等待时间（秒）
+
+# --- Vision (Phase C: 论文插图理解) ------------------------------------------
+# GLM-4.6V 通过 OpenAI 兼容接口描述论文插图（架构图/实验图表）。
+vision:
+  provider: "openai_compatible"
+  model: "glm-4.6v"
+  api_base: "https://open.bigmodel.cn/api/paas/v4"
+  api_key_env: "ZHIPU_API_KEY"    # 从环境变量读
+  max_tokens: 2000
+
+# --- ACP (v0.6: HAA↔Claude Code 编码通道) -----------------------------------
+# acpx CLI 路径（空=自动探测：bundled OpenClaw > which acpx > npx acpx）。
+# 每个 campaign 独立会话（session 名 = prefix-campaign_id）。
+acp:
+  acpx_path: ""
+  session_prefix: "haa"
+  timeout_simple: 300              # 简单代码生成（秒）
+  timeout_complex: 600             # 复杂调试（秒）
+  timeout_module: 1200             # 完整模块实现（秒）
+  fallback_to_agentloop: true      # CC 失败时降级到 AgentLoop
+
+# --- Memory (v1.0: 跨项目持久记忆——墓志铭 + 派生双纸) ------------------------
+# P1 结束/MORIBUND 时把全部候选（含被杀的，附死因）转写为记忆页；
+# SEEK/NOVELTY 前注入相关墓碑（"请勿重复"水印）。只注入墓碑与未解问题，
+# 绝不注入成功模式（模式侧留给 v1.1 且仅进修复端）。
+memory:
+  enabled: true
+  memory_dir: "data/memory"        # 相对 project_root
+  injection_max_items: 8           # 注入 prompt 的墓碑条数上限
+  inject_into_novelty: true        # NOVELTY 也注入（默认开）

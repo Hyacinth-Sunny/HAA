@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{% if lang == 'zh' %}项目情况{% else %}Projects{% endif %}{% endblock %}
+{% block content %}
+<div class="row" style="justify-content:space-between; align-items:center;">
+  <div>
+    <h1>{% if lang == 'zh' %}项目情况{% else %}Projects{% endif %}</h1>
+    <div class="muted">{% if lang == 'zh' %}所有科研项目的生命周期总览{% else %}All research project lifecycles{% endif %}</div>
+  </div>
+  <a class="btn btn-primary" href="/projects/new">+ {% if lang == 'zh' %}新建项目{% else %}New Project{% endif %}</a>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>{% if lang == 'zh' %}项目编号{% else %}ID{% endif %}</th>
+        <th>{% if lang == 'zh' %}项目名称{% else %}Title{% endif %}</th>
+        <th>{% if lang == 'zh' %}所处阶段{% else %}Phase{% endif %}</th>
+        <th>{% if lang == 'zh' %}进行情况{% else %}Status{% endif %}</th>
+        <th>{% if lang == 'zh' %}前体{% else %}Precursors{% endif %}</th>
+        <th>{% if lang == 'zh' %}创建时间{% else %}Created{% endif %}</th>
+        <th>{% if lang == 'zh' %}最后修改{% else %}Updated{% endif %}</th>
+        <th>{% if lang == 'zh' %}操作{% else %}Action{% endif %}</th>
+      </tr>
+    </thead>
+    {% include "partials/project_rows.html" %}
+  </table>
+</div>
+{% endblock %}

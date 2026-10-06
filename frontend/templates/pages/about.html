@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{% if lang == 'zh' %}关于 HAA{% else %}About HAA{% endif %}{% endblock %}
+{% block content %}
+<h1>HAA <span class="muted">v1.0.6</span></h1>
+<p class="muted">Hyacinth Automated Analyzer — {% if lang == 'zh' %}自动科研与论文生产工具{% else %}Automated Research &amp; Paper Production{% endif %}</p>
+
+<div class="section">
+  <h3>{% if lang == 'zh' %}项目简介{% else %}Introduction{% endif %}</h3>
+  <p>
+    {% if lang == 'zh' %}
+    给定一份研究简报（方向 / 约束 / 排除项 / 知识文件），HAA 自动走完三阶段：
+    <strong>P1</strong> 批量产出论文前体（想点子、联网查重、构造反例筛查、断网设计证明、定级、实验设计、写<strong>论文前半部</strong>、四路盲审批稿、精修），
+    <strong>P2</strong> 用 Claude Code（via ACP）生成实验代码，DebugSession 双阶段断路器调试执行并分析结果，
+    <strong>P3</strong> 整合理论 + 实验为完整论文（Markdown→LaTeX→pdflatex→.zip 打包交付）。
+    人工只在 ARV / EA / 最终交付三个关卡做决策；Agent 最高只能把项目设为「濒死」，废止权始终在用户手中。
+    {% else %}
+    Given a research brief (direction / constraints / exclusions / knowledge files), HAA runs three phases automatically:
+    <strong>P1</strong> produces paper precursors in batch (idea seeking, web dedup, adversarial screening,
+    offline proof design, grading, experiment design, <strong>front-half paper writing</strong>, four-lens blind review, refinement);
+    <strong>P2</strong> generates experiment code via Claude Code (through ACP), debugs/executes it with a
+    dual-phase circuit breaker, and analyzes results; <strong>P3</strong> integrates theory + experiments into a
+    full paper (Markdown → LaTeX → pdflatex → packaged .zip deliverable). Humans only decide at the ARV / EA /
+    final-delivery gates; the agent's highest authority is MORIBUND — only the user can ABORT.
+    {% endif %}
+  </p>
+</div>
+
+<div class="section">
+  <h3>{% if lang == 'zh' %}三阶段流程{% else %}Three-phase pipeline{% endif %}</h3>
+  <pre class="mono progress-strip" style="white-space:pre-wrap; font-size:0.82rem; margin:0">
+PR (人工简报: 死格式md直读 / 自由格式编译 / YAML)
+ → P1 批量前体（SEEK→NOVELTY→SCREEN→DESIGN⇄VERIFY→GRADE→EXP_SPEC→HUMAN_REVIEW→WRITE→REVIEW⇄REFINE→PUBLISHED）
+   简报铁律块注入十阶段 · fidelity lens 审简报委托 · 论文前半部四节
+ → ARV 人工遴选（多选 + 下载 .md）→ P2（CODE_GEN→EXECUTE DebugSession→ANALYZE）
+ → EA 人工评析 → P3（PAPER_INTEGRATE→MD2LATEX→LATEX_COMPILE→PACKAGE）
+ → DONE → 人工批准 → COMPLETED</pre>
+</div>
+
+<div class="section">
+  <h3>{% if lang == 'zh' %}核心设计原则{% else %}Core design principles{% endif %}</h3>
+  <ul>
+    <li><strong>{% if lang == 'zh' %}代码状态机{% else %}Code-driven state machine{% endif %}</strong> — {% if lang == 'zh' %}模型不知道自己在哪步，代码决定下一步{% else %}the model never knows which stage it is in; the code decides{% endif %}</li>
+    <li><strong>{% if lang == 'zh' %}双层预算先预留{% else %}Dual-layer pre-reserved budget{% endif %}</strong> — {% if lang == 'zh' %}先扣再发请求，收割环节不被预算卡掉{% else %}pre-deduct before each call; harvesting stages are never budget-gated{% endif %}</li>
+    <li><strong>{% if lang == 'zh' %}自建工具 + 安全沙箱{% else %}Owned tools + safe sandbox{% endif %}</strong> — {% if lang == 'zh' %}路径白名单 / 命令黑名单 / 进程组钳杀 / 流式双闸（空闲 300s·墙钟 1800s）{% else %}path allowlist / command blocklist / process-group kill / streaming dual gate{% endif %}</li>
+    <li><strong>{% if lang == 'zh' %}物理致盲四路审稿{% else %}Physically blinded four-lens review{% endif %}</strong> — {% if lang == 'zh' %}correctness / quality / industry / <strong>fidelity（简报符合性）</strong>独立打分{% else %}correctness / quality / industry / <strong>fidelity</strong> score independently{% endif %}</li>
+    <li><strong>{% if lang == 'zh' %}简报铁律全程注入{% else %}Brief ironclad injection{% endif %}</strong> — {% if lang == 'zh' %}约束逐字送达十个阶段，偏离即被 fidelity 审击落{% else %}verbatim constraints reach every stage; drift is shot down by the fidelity lens{% endif %}</li>
+    <li><strong>{% if lang == 'zh' %}主张成对{% else %}Paired claims{% endif %}</strong> — {% if lang == 'zh' %}每个结论配一个反方向，随候选流转{% else %}every claim carries a counter-direction through the candidate queue{% endif %}</li>
+    <li><strong>{% if lang == 'zh' %}结构化可观测 + 断点恢复{% else %}Structured observability + crash recovery{% endif %}</strong> — {% if lang == 'zh' %}events 表记录每一分钱与每次截断；checkpoint 原子写 + resume-p1 续跑 + 启动配置 banner{% else %}events table records every cent and truncation; atomic checkpoints + resume-p1 + config banner{% endif %}</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>{% if lang == 'zh' %}前端操作{% else %}Web usage{% endif %}</h3>
+  <table>
+    <thead><tr>
+      <th>{% if lang == 'zh' %}功能{% else %}Feature{% endif %}</th>
+      <th>{% if lang == 'zh' %}入口{% else %}Entry{% endif %}</th>
+      <th>{% if lang == 'zh' %}说明{% else %}Notes{% endif %}</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>{% if lang == 'zh' %}主页{% else %}Home{% endif %}</td><td><a href="/">/</a></td><td>{% if lang == 'zh' %}简介 + 流程图 + 统计卡片{% else %}intro + flow diagram + stats{% endif %}</td></tr>
+      <tr><td>{% if lang == 'zh' %}项目情况{% else %}Projects{% endif %}</td><td><a href="/projects">/projects</a></td><td>{% if lang == 'zh' %}项目列表 + 新建（<strong>原版简报上传编译</strong> + 知识文件）+ 阶段感知详情页（ARV <strong>多选/下载</strong>）{% else %}project list, create (<strong>raw-brief upload</strong> + knowledge files), phase-aware detail (ARV <strong>multi-select/download</strong>){% endif %}</td></tr>
+      <tr><td>{% if lang == 'zh' %}日志查看{% else %}Logs{% endif %}</td><td><a href="/logs">/logs</a></td><td>{% if lang == 'zh' %}事件流筛选 / 花费 / tokens{% else %}event stream filters / cost / tokens{% endif %}</td></tr>
+      <tr><td>{% if lang == 'zh' %}设置{% else %}Settings{% endif %}</td><td><a href="/settings">/settings</a></td><td>{% if lang == 'zh' %}超参 / 预算 / 工具帽 / REVIEW 阈值 + 提示词查看器{% else %}hyperparams / budget / tool caps / review threshold + prompt viewer{% endif %}</td></tr>
+      <tr><td>{% if lang == 'zh' %}说明书{% else %}Manual{% endif %}</td><td><a href="/about">/about</a></td><td>{% if lang == 'zh' %}本页下方渲染完整说明书（单一来源 HAA项目说明书.md）{% else %}full manual rendered below (single source: HAA项目说明书.md){% endif %}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>{% if lang == 'zh' %}版本与验证{% else %}Version &amp; verification{% endif %}</h3>
+  <ul>
+    <li><strong>v1.0.6</strong> — {% if lang == 'zh' %}GLM-5.3-flash 接入（provider_options 透传通道 + extra_body；vision 统一到原生多模态）{% else %}GLM-5.3-flash support (provider_options passthrough via extra_body; unified native-multimodal vision){% endif %}</li>
+    <li><strong>v1.0.5</strong> — {% if lang == 'zh' %}论文前半部体裁 + 四 lens 前半部标准 + 工具帽配置清扫 + 说明书上网{% else %}front-half paper genre + lens standard + tool-cap config sweep + manual on web{% endif %}</li>
+    <li><strong>v1.0.4</strong> — {% if lang == 'zh' %}死格式简报直读（零 LLM）+ 模板{% else %}dead-format brief (zero-LLM) + template{% endif %}</li>
+    <li><strong>v1.0.3</strong> — {% if lang == 'zh' %}简报铁律注入十阶段 + fidelity lens（指令遵循结构保证）{% else %}ironclad injection + fidelity lens{% endif %}</li>
+    <li><strong>v1.0.2</strong> — {% if lang == 'zh' %}流式双闸 / 简报编译器 / 知识文件 / resume-p1 / ARV 多选下载{% else %}streaming gates / brief compiler / knowledge files / resume / ARV{% endif %}</li>
+    <li><strong>v1.0</strong> — {% if lang == 'zh' %}跨项目墓碑记忆 + 文献三级回退{% else %}cross-project memory + 3-source search{% endif %}</li>
+    <li>{% if lang == 'zh' %}全量测试：{% else %}Full test suite: {% endif %}<strong id="test-count">413+ passed</strong></li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>{% if lang == 'zh' %}完整说明书{% else %}Full manual{% endif %}</h3>
+  {% if manual_md %}
+  <details class="details" open>
+    <summary>HAA项目说明书.md（{% if lang == 'zh' %}本页实时渲染仓库文件，单一来源{% else %}rendered live from the repo file — single source of truth{% endif %}）</summary>
+    <div class="md-body md-panel" style="padding-top:10px;">{{ manual_md | md }}</div>
+  </details>
+  {% else %}
+  <p class="help">{% if lang == 'zh' %}未找到 <span class="mono">HAA项目说明书.md</span>（仓库根目录）。{% else %}<span class="mono">HAA项目说明书.md</span> not found in the repo root.{% endif %}</p>
+  {% endif %}
+</div>
+{% endblock %}

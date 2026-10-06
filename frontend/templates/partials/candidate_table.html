@@ -1,0 +1,101 @@
+{# SEEK-survivor idea summary table.
+   (context: candidate_dossiers, lang) — shown during P1, at ARV, and when MORIBUND. #}
+{% if candidate_dossiers %}
+<div class="section">
+  <h3>{% if lang == 'zh' %}候选 Idea 汇总（SEEK 幸存）{% else %}Candidate Ideas (SEEK survivors){% endif %}</h3>
+  <table class="idea-table">
+    <thead><tr>
+      <th style="width:26%;">Idea</th>
+      <th style="width:8%;">{% if lang == 'zh' %}结果{% else %}Result{% endif %}</th>
+      <th style="width:8%;">GRADE</th>
+      <th style="width:18%;">REVIEW</th>
+      <th style="width:40%;">{% if lang == 'zh' %}否决原因 / 依据{% else %}Rejection basis{% endif %}</th>
+    </tr></thead>
+    <tbody>
+    {% for d in candidate_dossiers %}
+      {% set c = d.candidate %}
+      {% set v = d.verdicts %}
+      {% set status = c.get('status', '?') %}
+      {% set g = (v.get('GRADE') or {}).get('grade', '') %}
+      {% set rv = v.get('REVIEW') or {} %}
+      {% set kill = d.kills[-1] if d.kills else none %}
+      <tr>
+        {# --- Idea cell: title + expandable full content --- #}
+        <td>
+          <details class="idea-details">
+            <summary class="idea-title">
+              {{ c.get('title', c.get('slug', '?')) }}
+              <span class="muted mono">EV {{ '%.2f' | format((c.get('significance', 0) or 0) * (c.get('win_odds', 0) or 0)) }}</span>
+            </summary>
+            <div class="idea-body">
+              {% if c.get('rationale') %}<div class="detail-label">rationale</div><div class="detail-text md-body md-small">{{ c.rationale | md }}</div>{% endif %}
+              {% if c.get('positive_claim') %}<div class="detail-label">{% if lang == 'zh' %}正面主张{% else %}positive claim{% endif %}</div><div class="detail-text md-body md-small">{{ c.positive_claim | md }}</div>{% endif %}
+              {% if c.get('negative_claim') %}<div class="detail-label">{% if lang == 'zh' %}负面主张{% else %}negative claim{% endif %}</div><div class="detail-text md-body md-small">{{ c.negative_claim | md }}</div>{% endif %}
+              {% if c.get('attack_plan') %}<div class="detail-label">attack plan</div><div class="detail-text md-body md-small">{{ c.attack_plan | md }}</div>{% endif %}
+              {% if c.get('closest_prior_work') %}<div class="detail-label">closest prior</div><div class="detail-text md-body md-small">{{ c.closest_prior_work | md }}</div>{% endif %}
+              {% if v.get('NOVELTY') %}<div class="detail-label">NOVELTY</div>
+                <div class="detail-text">{{ v.NOVELTY.get('verdict', '?') }} — {{ v.NOVELTY.get('rationale', '') | md }}</div>{% endif %}
+              {% if v.get('SCREEN') %}<div class="detail-label">SCREEN</div>
+                <div class="detail-text">survives={{ v.SCREEN.get('survives') }} — {{ v.SCREEN.get('rationale', '') | md }}</div>{% endif %}
+              {% if v.get('VERIFY') %}<div class="detail-label">VERIFY</div>
+                <div class="detail-text">passed={{ v.VERIFY.passed }}, {{ v.VERIFY.findings | length }} finding(s)</div>{% endif %}
+            </div>
+          </details>
+        </td>
+        {# --- Result cell --- #}
+        <td>
+          {% if status == 'published' %}<span class="chip chip-green">{% if lang == 'zh' %}采纳{% else %}Adopted{% endif %}</span>
+          {% elif status in ('dead', 'filtered') %}<span class="chip chip-red">{% if lang == 'zh' %}否决{% else %}Rejected{% endif %}</span>
+          {% else %}<span class="chip chip-yellow">{% if lang == 'zh' %}进行中{% else %}In progress{% endif %}</span>{% endif %}
+          {% if status == 'filtered' %}<div class="muted" style="font-size:0.7em;">SEEK cap</div>{% endif %}
+        </td>
+        {# --- GRADE cell --- #}
+        <td>
+          {% if g %}
+            {% set gcls = {'solid': 'chip-green', 'thin': 'chip-yellow', 'trivial': 'chip-red', 'loophole': 'chip-red'}.get(g, 'chip-gray') %}
+            <span class="chip {{ gcls }}">{{ g }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        {# --- REVIEW cell: score chips + click-detail --- #}
+        <td>
+          {% if rv %}
+            {% set rd = rv.get('decision', '?') %}
+            <span class="chip {{ 'chip-green' if rd == 'accept' else 'chip-yellow' }}">{{ rd }} {{ rv.get('overall', '') }}</span>
+            <details class="idea-details">
+              <summary class="tl-more">▾ {% if lang == 'zh' %}评审意见{% else %}opinions{% endif %}</summary>
+              <div class="idea-body">
+                {% for lens, score in (rv.get('scores') or {}).items() %}
+                <div class="detail-label">{{ lens }}: {{ score }}</div>
+                {% endfor %}
+                {% for lens, rep in (rv.get('reports') or {}).items() %}
+                <div class="detail-label">{% if lang == 'zh' %}评审·{% endif %}{{ lens }}</div>
+                <div class="md-body md-small">{{ rep | md }}</div>
+                {% endfor %}
+              </div>
+            </details>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        {# --- Rejection basis cell --- #}
+        <td>
+          {% if kill %}
+            <span class="chip chip-red">✗ {{ kill.get('stage', '?') }}</span>
+            {% set kv = kill.get('verdict', {}) %}
+            {% if kv.get('grade') %}<div class="rej-text">{{ kv.grade }}: {{ kv.get('rationale', '') }}</div>
+            {% elif kv.get('blockers') %}
+              {% for b in kv.blockers[:2] %}
+              <div class="rej-text">[{{ b.get('severity') }}/{{ b.get('category') }}] {{ b.get('detail', '') }}</div>
+              {% if b.get('fix_suggestion') %}<div class="rej-text muted">fix: {{ b.fix_suggestion }}</div>{% endif %}
+              {% endfor %}
+            {% else %}
+              <div class="rej-text">{{ kv.get('kill_method', '') }} {{ kv.get('evidence', '') or kv.get('rationale', '') }}</div>
+            {% endif %}
+          {% elif status == 'published' %}<span class="muted">—</span>
+          {% elif status == 'active' or status == 'proposed' %}<span class="muted">{% if lang == 'zh' %}审判进行中…{% else %}under review…{% endif %}</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}

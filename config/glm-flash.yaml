@@ -1,0 +1,152 @@
+# GLM-5.3-Flash 冒烟/运行配置（v1.0.5+）。
+# 用法：HAA_CONFIG=config/glm-flash.yaml haa project start <pid>
+# key：export ZHIPU_API_KEY=<你的智谱 API Key>（https://open.bigmodel.cn）
+
+llm:
+  # litellm 走智谱 OpenAI 兼容端点："openai/" 前缀 + api_base。
+  # ⚠ 端点二选一（Coding Plan 积分只覆盖专用端点）：
+  #   按量付费（账户余额，本配置当前）：https://open.bigmodel.cn/api/paas/v4
+  #   Coding Plan（积分，勿与开发用量混账）：  https://open.bigmodel.cn/api/coding/paas/v4/
+  model: "openai/glm-5.3-flash"
+  max_retries: 2
+  api_base: "https://open.bigmodel.cn/api/paas/v4"
+  api_key_env: "ZHIPU_API_KEY"
+  # 子代理复用主模型（flash 本身即轻量档；如需分离可改 openai/glm-5.3-flash）
+  sub_agent_model: ""
+  # GLM 专属请求参数，逐字透传 litellm：
+  #   tool_stream —— 硬需求：GLM 流式下不传则 tool_calls 不产出，HAA 全流式
+  #                  架构会拿不到任何工具调用（官方对话补全文档明示仅 5.x/4.7/4.6 支持）。
+  #   thinking    —— GLM-5.3 系列思考不可关（只能 enabled），显式写出以防默认漂移。
+  #   reasoning_effort —— 实测该部署仅认 low/high/max（medium 报 1210 错）。
+  provider_options:
+    tool_stream: true
+    thinking: {type: enabled}
+    reasoning_effort: low
+  # 显式价目兜底（USD / 百万 tokens）：litellm 价目表无 glm-5.3-flash，
+  # completion_cost 恒 0 → 预算闸致盲。此处单价自算 cost（官方原价，未含
+  # 发布期 5 折——保守计费，宁多扣不漏扣）。来源：bigmodel.cn 定价页。
+  pricing:
+    input_per_m: 0.15
+    output_per_m: 0.50
+
+timeouts:
+  llm: 300
+  llm_wall: 1800
+  stage: 3600
+
+budget:
+  per_campaign: 10.0
+  global_limit: 100.0
+
+pipeline:
+  max_design_rounds: 3
+  max_review_rounds: 3
+  review_accept_threshold: 0.7
+  seek_candidate_count: 5
+  output_candidate_count: 3
+  stage_tool_limits:
+    SEEK: 12
+    NOVELTY: 10
+    SCREEN: 8
+    DESIGN: 50
+    VERIFY: 30
+    GRADE: 5
+    WRITE: 12
+    REVIEW: 2
+    REFINE: 6
+    EXP_SPEC: 14
+    EXP_FEASIBILITY: 12
+
+server:
+  host: "0.0.0.0"
+  port: 8420
+
+storage:
+  db_path: "data/haa.db"
+  campaigns_dir: "data/campaigns"
+
+tools:
+  web_search:
+    provider: "tavily"
+    api_key_env: "TAVILY_API_KEY"
+    max_results: 5
+  web_fetch:
+    timeout: 30
+    max_chars: 10000
+  exec_bash:
+    timeout: 30
+    blocked_commands:
+      - "rm -rf"
+      - "sudo "
+      - "shutdown"
+      - "reboot"
+      - "mkfs"
+      - "dd if="
+      - ":(){"
+      - "nc -l"
+      - "chmod 777"
+  file_ops:
+    allowed_paths:
+      - "data/campaigns/"
+      - "data/"
+    max_file_size_mb: 10
+  search_paper:
+    provider: "semantic_scholar"
+    api_key_env: ""
+    max_results: 10
+  agent_result_max_chars: 8000
+  read_file_result_max_chars: 30000
+  fulltext:
+    email: "N5_yzh@163.com"
+    timeout_s: 90
+    max_mb: 30
+    retries: 2
+    local_library:
+      enabled: false              # 需要时改 true 并填 dir（如 /home/hyacinth-sunny/papers）
+      dir: ""
+
+logging:
+  level: "INFO"
+  format: "text"
+  output: "stdout"
+  file_path: "data/haa.log"
+
+ssh:
+  host: ""
+  user: ""
+  key_path: "~/.ssh/id_rsa"
+  remote_base_dir: "~/haa_runs"
+  poll_interval_s: 30
+  poll_timeout_s: 3600
+
+# 视觉统一到 GLM-5.3-flash（原生多模态，替代 glm-4.6v 的独立视觉通道）。
+# thinking 不可关但 reasoning_content 与 content 分离，describe_image 只读 content。
+# max_tokens 8192：看图场景足够（思考消耗计入 completion 侧，2000 会截断正文）。
+#
+# ⚠ max_tokens 官方规则（2026-08-27 查证 docs.bigmodel.cn concept-param 页）：
+#   glm-5.3-flash 上限 131072（128K），API 默认 65536（64K）。
+#   llm 主链路【未显式配置 max_tokens】→ 走服务端默认 64K。deepseek 侧 DESIGN
+#   实测单次输出峰值 85K tokens——若 GLM 全链路试跑中 DESIGN 巨 JSON 撞 64K 帽
+#   被截断，对策优先是 DESIGN 产物瘦身（开发日志 B 档），确需放帽再加
+#   llm.max_tokens 显式配置（勿超 131072）。思考 tokens 是否计入 max_tokens
+#   官方未明示，按计入保守预估。
+vision:
+  provider: "openai_compatible"
+  model: "glm-5.3-flash"
+  api_base: "https://open.bigmodel.cn/api/paas/v4"
+  api_key_env: "ZHIPU_API_KEY"
+  max_tokens: 8192
+
+acp:
+  acpx_path: ""
+  session_prefix: "haa"
+  timeout_simple: 300
+  timeout_complex: 600
+  timeout_module: 1200
+  fallback_to_agentloop: true
+
+memory:
+  enabled: true
+  memory_dir: "data/memory"
+  injection_max_items: 8
+  inject_into_novelty: true

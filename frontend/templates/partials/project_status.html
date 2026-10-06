@@ -1,0 +1,51 @@
+{# project status block; self-polls every 2s while a phase is running
+   (context: project, linked, running_now, lang) #}
+{% set active = project.status.value in ('in_progress', 'moribund') and not project.is_terminal %}
+<div class="section" id="project-status"
+     {% if active %}hx-get="/partials/projects/{{ project.id }}/status?lang={{ lang }}"
+     hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <div class="row" style="justify-content:space-between;">
+    <div>
+      <h3 style="margin-bottom:4px;">
+        {% if lang == 'zh' %}运行状态{% else %}Status{% endif %}
+        <span class="badge {{ project.status.value | project_status_class }}" style="margin-left:8px;">{{ project.status.value }}</span>
+        <span class="badge {{ project.phase.value | phase_class }}" style="margin-left:4px;">{{ project.phase.value | upper }}</span>
+      </h3>
+      {% if running_now %}<span class="badge badge-purple">▶ {% if lang == 'zh' %}后台运行中{% else %}running in background{% endif %}</span>
+      {% elif active %}<span class="muted">⏳ {% if lang == 'zh' %}等待调度…{% else %}waiting to start…{% endif %}</span>{% endif %}
+    </div>
+    {% if project.is_terminal %}
+      <span class="badge {{ 'badge-green' if project.status.value == 'completed' else 'badge-gray' }}">
+        {{ '✓ COMPLETED' if project.status.value == 'completed' else '✕ ABORTED' }}
+      </span>
+    {% endif %}
+  </div>
+
+  {% if linked %}
+  <table style="margin-top:10px;">
+    <thead><tr>
+      <th>{% if lang == 'zh' %}角色{% else %}Role{% endif %}</th>
+      <th>{% if lang == 'zh' %}Campaign{% endif %}</th>
+      <th>{% if lang == 'zh' %}状态{% else %}Status{% endif %}</th>
+      <th>{% if lang == 'zh' %}预算{% else %}Budget{% endif %}</th>
+    </tr></thead>
+    <tbody>
+    {% for item in linked %}
+      {% set c = item.campaign %}
+      {% set pct = (c.budget_used / c.budget_limit * 100) if c.budget_limit else 0 %}
+      <tr>
+        <td><span class="badge {{ 'badge-purple' if item.role == 'scout' else 'badge-blue' }}">{{ item.role }}</span></td>
+        <td class="id"><a href="/campaigns/{{ c.id }}">{{ c.id[:12] }}</a></td>
+        <td><span class="badge {{ c.status.value | status_class }}">{{ c.status.value }}</span></td>
+        <td>
+          <div class="bar" style="min-width:90px;"><span style="width:{{ pct | int }}%"></span></div>
+          <span class="muted">{{ c.budget_used | money }} / {{ c.budget_limit | money }}</span>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">{% if lang == 'zh' %}尚未创建 Campaign。{% else %}No campaigns linked yet.{% endif %}</div>
+  {% endif %}
+</div>

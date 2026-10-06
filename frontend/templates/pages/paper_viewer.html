@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Paper · {{ campaign.id[:8] }}{% endblock %}
+{% block content %}
+<div class="row" style="justify-content:space-between; align-items:center">
+  <h1>Paper</h1>
+  <div class="muted"><a href="/campaigns/{{ campaign.id }}">← back to campaign</a></div>
+</div>
+
+{% if paper_checkpoints %}
+<div class="section">
+  <label>Version (REVIEW/REFINE history)</label>
+  <select name="seq"
+          hx-get="/partials/campaigns/{{ campaign.id }}/paper"
+          hx-target="#paper-body" hx-swap="outerHTML" hx-trigger="change">
+    {% for cp in paper_checkpoints %}
+    <option value="{{ cp.seq }}" {% if cp.seq == current_seq %}selected{% endif %}>
+      #{{ cp.seq }} · {{ cp.stage }} · {{ cp.created_at | dt }}
+    </option>
+    {% endfor %}
+  </select>
+</div>
+{% endif %}
+
+<div class="section">
+  {% include "partials/paper_sections.html" %}
+</div>
+{% endblock %}

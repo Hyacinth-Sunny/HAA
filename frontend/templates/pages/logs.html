@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{% if lang == 'zh' %}日志查看{% else %}Logs{% endif %}{% endblock %}
+{% block content %}
+<h1>{% if lang == 'zh' %}日志查看{% else %}Logs{% endif %}</h1>
+<div class="muted" style="margin-bottom:1rem;">
+  {% if lang == 'zh' %}所有项目在不同时刻的操作日志（事件流，默认最近 200 条，最新在上）{% else %}Operation log across all projects (event stream, latest 200, newest first){% endif %}
+</div>
+
+{% set total_cost = events | sum(attribute='cost_usd') %}
+{% set total_tokens = events | sum(attribute='tokens') %}
+{% set truncated = events | selectattr('event_type', 'equalto', 'stage_truncated') | list | length %}
+<div class="cards">
+  <div class="card"><div class="k">{% if lang == 'zh' %}事件数{% else %}Events{% endif %}</div><div class="v">{{ events | length }}</div></div>
+  <div class="card"><div class="k">{% if lang == 'zh' %}总花费{% else %}Total cost{% endif %}</div><div class="v">{{ total_cost | money }}</div></div>
+  <div class="card"><div class="k">Tokens</div><div class="v">{{ total_tokens }}</div></div>
+  <div class="card"><div class="k">{% if lang == 'zh' %}截断次数{% else %}Truncated{% endif %}</div><div class="v">{{ truncated }}</div></div>
+</div>
+
+<form class="section" method="get" action="/logs">
+  <input type="hidden" name="lang" value="{{ lang }}">
+  <div class="row">
+    <div style="flex:1; min-width:200px;">
+      <label>{% if lang == 'zh' %}项目 / Campaign{% else %}Project / Campaign{% endif %}</label>
+      <select name="project_id" onchange="this.form.submit()">
+        <option value="">{% if lang == 'zh' %}所有项目 / All{% else %}All projects{% endif %}</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}" {{ 'selected' if filter_project == p.id else '' }}>{{ p.brief.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1; min-width:200px;">
+      <label>{% if lang == 'zh' %}事件类型{% else %}Event type{% endif %}</label>
+      <select name="event_type" onchange="this.form.submit()">
+        <option value="">{% if lang == 'zh' %}全部 / All{% else %}All types{% endif %}</option>
+        {% for t in event_types %}
+        <option value="{{ t }}" {{ 'selected' if filter_type == t else '' }}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="align-self:flex-end;">
+      <a class="btn" href="/logs?lang={{ lang }}">{% if lang == 'zh' %}重置{% else %}Reset{% endif %}</a>
+    </div>
+  </div>
+</form>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>{% if lang == 'zh' %}时间{% else %}Time{% endif %}</th>
+        <th>{% if lang == 'zh' %}项目{% else %}Project{% endif %}</th>
+        <th>{% if lang == 'zh' %}Campaign{% endif %}</th>
+        <th>{% if lang == 'zh' %}阶段{% else %}Stage{% endif %}</th>
+        <th>{% if lang == 'zh' %}事件类型{% else %}Event type{% endif %}</th>
+        <th>{% if lang == 'zh' %}详情{% else %}Details{% endif %}</th>
+        <th>{% if lang == 'zh' %}花费{% else %}Cost{% endif %}</th>
+        <th>Tokens</th>
+      </tr>
+    </thead>
+    {% with filter_project=filter_project, filter_type=filter_type %}
+    {% include "partials/log_rows.html" %}
+    {% endwith %}
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+# HATM 全链路冒烟配置（v1.0.2）——配套 data/brief_hatm_v2.yaml
+# 用法：HAA_CONFIG=config/hatm-v2.yaml + DEEPSEEK_API_KEY / TAVILY_API_KEY
+#   HAA_CONFIG=config/hatm-v2.yaml haa project start <project_id>
+# 教训（smoke4）：不设 HAA_CONFIG 会静默落到 default.yaml 的 $100 闸——
+# 现在启动 banner 会醒目打印生效配置，错配一眼可见。
+llm:
+  model: "deepseek/deepseek-v4-pro"
+  max_retries: 2
+  api_base: ""
+  api_key_env: "DEEPSEEK_API_KEY"
+  sub_agent_model: "deepseek/deepseek-v4-flash"
+
+timeouts:
+  llm: 300          # 空闲闸：相邻 chunk 间隔上限（流式化后语义）
+  llm_wall: 1800    # 墙钟闸：单调用总上限
+  stage: 3600       # 阶段墙钟：到点按工具帽同款收尾
+
+budget:
+  per_campaign: 10.0
+  global_limit: 5.0
+
+pipeline:
+  max_design_rounds: 3
+  max_review_rounds: 3
+  # 全链路候选单个更重：少而精，候选间是竞争性全链路方案的对打
+  # smoke9（8-27）：seek=3 全保留不滤除（用户要求 3 idea 全部进入后续阶段）
+  seek_candidate_count: 3
+  output_candidate_count: 3
+  stage_tool_limits:
+    # 2026-08-27 rev4 按 smoke8 全量撞帽统计（20 次，见开发日志）+ 用户裁决放量：
+    # 撞帽=被迫无工具收尾交判决（审查依据不全）；本次冒烟目标=各阶段完整走完。
+    SEEK: 24         # smoke8 撞 21/20；fetch_paper_fulltext 全文核验会增调用量
+    NOVELTY: 35      # 4/4 campaign 撞 12/10（用户裁决；多角度+带年份查重吃调用）
+    SCREEN: 50       # 4/4 撞 9/8（用户裁决；写→跑→看反例脚本一角度 3-4 次）
+    DESIGN: 50
+    VERIFY: 36       # worker 循环末轮用光 30/30
+    GRADE: 5
+    WRITE: 16        # worker 撞 13/12（四节分章 write_file）
+    REVIEW: 2
+    REFINE: 20       # 3 次撞 6-8/6（用户裁决；四路评审意见多章改写）
+    EXP_SPEC: 18       # smoke8 实证：三问联合简报的实验矩阵大，4 轮返工每轮
+                       # 都撞 14 帽截断（15-17 次）后带 blocker degraded 进 WRITE
+    EXP_FEASIBILITY: 16  # 同上：每轮撞 12 帽（13 次）
+
+storage:
+  db_path: "data/haa.db"       # 主库（实战姿态）
+  campaigns_dir: "data/campaigns"
+
+logging:
+  level: "INFO"
+  format: "text"
+  output: "stdout"

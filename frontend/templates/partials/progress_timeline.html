@@ -1,0 +1,9 @@
+{# checkpoint timeline; self-polls every 3s while running (context: campaign, checkpoints) #}
+<ul class="timeline" id="progress"
+    {% if not campaign.is_terminal %}hx-get="/partials/campaigns/{{ campaign.id }}/progress" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+{% for cp in checkpoints %}
+  <li><span class="ts">{{ cp.created_at | dt }}</span><span class="st">{{ cp.stage }}</span></li>
+{% else %}
+  <li class="empty">No checkpoints yet.</li>
+{% endfor %}
+</ul>

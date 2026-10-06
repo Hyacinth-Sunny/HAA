@@ -1,0 +1,25 @@
+{# log table body (context: events, project_name, lang) #}
+<tbody id="log-rows"
+       {% if events %}hx-get="/partials/logs?lang={{ lang }}&amp;project_id={{ filter_project }}&amp;event_type={{ filter_type }}"
+       hx-trigger="every 10s" hx-swap="outerHTML"{% endif %}>
+{% for e in events %}
+  <tr>
+    <td class="mono">{{ e.created_at | dtime }}</td>
+    <td>{{ project_name.get(e.campaign_id or '', e.campaign_id or '—') }}</td>
+    <td class="id">{{ (e.campaign_id or '—')[:8] }}</td>
+    <td><span class="badge {{ e.stage | default('') | phase_class }}">{{ e.stage or '—' }}</span></td>
+    <td><span class="badge {{ e.event_type | event_class }}">{{ e.event_type }}</span></td>
+    <td>
+      {% if e.payload %}
+      <details class="details"><summary>{% if lang == 'zh' %}查看{% else %}view{% endif %}</summary>
+        <pre class="pre-scroll" style="max-height:220px;">{{ e.payload | tojson }}</pre>
+      </details>
+      {% else %}—{% endif %}
+    </td>
+    <td class="muted">{{ e.cost_usd | money }}</td>
+    <td class="mono">{{ e.tokens }}</td>
+  </tr>
+{% else %}
+  <tr><td colspan="8" class="empty">{% if lang == 'zh' %}暂无日志。{% else %}No events yet.{% endif %}</td></tr>
+{% endfor %}
+</tbody>

@@ -1,0 +1,22 @@
+{# status badge + budget bar + latest stage; self-polls every 2s while running #}
+{% set pct = (campaign.budget_used / campaign.budget_limit * 100) if campaign.budget_limit else 0 %}
+<div id="status-block"
+     {% if not campaign.is_terminal %}hx-get="/partials/campaigns/{{ campaign.id }}/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <div class="row">
+    <span class="badge {{ campaign.status.value | status_class }}">{{ campaign.status.value }}</span>
+    {% if latest %}<span class="muted">latest: <span class="mono">{{ latest.stage }}</span></span>{% endif %}
+    {% if campaign.is_terminal %}
+      {% if campaign.status.value == "published" %}<span class="badge badge-published">✓ PUBLISHED</span>
+      {% else %}<span class="badge badge-retired">RETIRED</span>{% endif %}
+    {% elif not running_now %}
+      <button class="btn btn-primary" hx-post="/campaigns/{{ campaign.id }}/run"
+              hx-target="#status-block" hx-swap="outerHTML">▶ Run</button>
+    {% else %}
+      <span class="muted">running…</span>
+    {% endif %}
+  </div>
+  <div style="margin-top:0.5rem">
+    <div class="bar"><span style="width:{{ pct | int }}%"></span></div>
+    <div class="muted">{{ campaign.budget_used | money }} / {{ campaign.budget_limit | money }} spent · {{ campaign.budget_remaining | money }} remaining</div>
+  </div>
+</div>

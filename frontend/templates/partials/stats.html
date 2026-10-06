@@ -1,0 +1,13 @@
+{# stats cards (context: stats dict from store.stats()) #}
+<div class="cards" id="stats">
+  <div class="card"><div class="k">Campaigns</div><div class="v">{{ stats.total_campaigns }}</div></div>
+  <div class="card"><div class="k">Published</div><div class="v">{{ stats.published }}</div></div>
+  <div class="card"><div class="k">Total Spent</div><div class="v">{{ stats.total_budget_used | money }}</div></div>
+  <div class="card"><div class="k">By Status</div>
+    <div class="v" style="font-size:0.85rem; line-height:2;">
+      {% for s, n in (stats.by_status or {}).items() %}
+      <span class="badge {{ s | status_class }}">{{ s }}: {{ n }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>

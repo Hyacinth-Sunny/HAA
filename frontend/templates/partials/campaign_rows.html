@@ -1,0 +1,19 @@
+{# campaign table body; self-polling (context: campaigns list) #}
+<tbody id="campaign-rows"
+       hx-get="/partials/campaigns" hx-trigger="every 10s" hx-swap="outerHTML">
+{% for c in campaigns %}
+  {% set pct = (c.budget_used / c.budget_limit * 100) if c.budget_limit else 0 %}
+  <tr>
+    <td class="id"><a href="/campaigns/{{ c.id }}">{{ c.id[:12] }}</a></td>
+    <td>{{ c.title or "(untitled)" }}</td>
+    <td><span class="badge {{ c.status.value | status_class }}">{{ c.status.value }}</span></td>
+    <td>
+      <div class="bar"><span style="width:{{ pct | int }}%"></span></div>
+      <span class="muted">{{ c.budget_used | money }} / {{ c.budget_limit | money }}</span>
+    </td>
+    <td class="mono">{{ c.created_at | dt }}</td>
+  </tr>
+{% else %}
+  <tr><td colspan="5" class="empty">No campaigns yet. <a href="/campaigns/new">Create one →</a></td></tr>
+{% endfor %}
+</tbody>

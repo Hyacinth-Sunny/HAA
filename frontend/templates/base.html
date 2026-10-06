@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="{{ lang or 'zh' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}HAA{% endblock %} · HAA</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body>
+  <nav class="top-nav">
+    <span class="logo">HAA</span>
+    <a href="/" class="{% if active == 'home' %}active{% endif %}">
+      {% if lang == 'zh' %}主页{% else %}Home{% endif %}
+    </a>
+    <a href="/projects" class="{% if active == 'projects' %}active{% endif %}">
+      {% if lang == 'zh' %}项目情况{% else %}Projects{% endif %}
+    </a>
+    <a href="/logs" class="{% if active == 'logs' %}active{% endif %}">
+      {% if lang == 'zh' %}日志查看{% else %}Logs{% endif %}
+    </a>
+    <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">
+      {% if lang == 'zh' %}设置{% else %}Settings{% endif %}
+    </a>
+    <a href="/about" class="{% if active == 'about' %}active{% endif %}">
+      {% if lang == 'zh' %}关于{% else %}About{% endif %}
+    </a>
+    <button class="lang-toggle" onclick="toggleLang()">🌐 {% if lang == 'zh' %}EN{% else %}中{% endif %}</button>
+  </nav>
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="version">HAA V1.0.6</footer>
+  <script>
+    function toggleLang() {
+      const cur = localStorage.getItem('haa-lang') || 'zh';
+      const next = cur === 'zh' ? 'en' : 'zh';
+      localStorage.setItem('haa-lang', next);
+      const url = new URL(window.location.href);
+      url.searchParams.set('lang', next);
+      window.location.href = url.toString();
+    }
+    (function () {
+      const saved = localStorage.getItem('haa-lang');
+      const q = new URLSearchParams(window.location.search).get('lang');
+      if (!q && saved && saved !== document.documentElement.lang) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('lang', saved);
+        window.location.href = url.toString();
+      }
+    })();
+    // Preserve <details> open-state across HTMX polling swaps.
+    // The progress section re-renders every 3s (hx-swap outerHTML), which
+    // would otherwise destroy and re-collapse any expanded 详情 row.
+    document.body.addEventListener('htmx:beforeSwap', function () {
+      const open = [];
+      document.querySelectorAll('details[open][data-cp]').forEach(function (d) {
+        open.push(d.dataset.cp);
+      });
+      window.__openCps = open;
+    });
+    document.body.addEventListener('htmx:afterSwap', function () {
+      (window.__openCps || []).forEach(function (seq) {
+        const d = document.querySelector('details[data-cp="' + seq + '"]');
+        if (d) d.open = true;
+      });
+    });
+  </script>
+</body>
+</html>

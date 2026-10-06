@@ -1,0 +1,42 @@
+{# project progress; self-polls every 3s while running
+   (context: project, linked, checkpoints_by_campaign, cp_summaries, lang) #}
+{% set active = project.status.value in ('in_progress', 'moribund') and not project.is_terminal %}
+{% set all_cps = [] %}
+{% for item in linked %}
+  {% for cp in checkpoints_by_campaign.get(item.campaign.id, []) %}{% set _ = all_cps.append(cp) %}{% endfor %}
+{% endfor %}
+<div class="section" id="project-progress"
+     {% if active %}hx-get="/partials/projects/{{ project.id }}/progress?lang={{ lang }}"
+     hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+  <h3>{% if lang == 'zh' %}进度（各阶段判决）{% else %}Progress (stage verdicts){% endif %}</h3>
+  <ul class="timeline compact">
+    {% for cp in all_cps | sort(attribute='seq') | reverse %}
+    {% set smry = cp_summaries.get(cp.seq, {}) if cp_summaries else {} %}
+    {% set has_detail = smry.detail or smry.full %}
+    <li class="tl-entry">
+      <details class="tl-details" id="cp-{{ cp.seq }}" data-cp="{{ cp.seq }}" hx-preserve
+               {% if not has_detail %}onclick="return false"{% endif %}>
+        <summary class="tl-row">
+          <span class="ts">{{ cp.created_at | dt }}</span>
+          <span class="st">{{ cp.stage }}</span>
+          {% if smry.chip %}<span class="chip {{ smry.cls }}">{{ smry.chip }}</span>{% endif %}
+          {% if has_detail %}<span class="tl-more">▾ {% if lang == 'zh' %}详情{% else %}details{% endif %}</span>{% endif %}
+        </summary>
+        {% if has_detail %}
+        <div class="tl-detail-body">
+          {% if smry.detail %}<div class="stage-detail">{{ smry.detail }}</div>{% endif %}
+          {% for item in smry.full or [] %}
+          <div class="detail-block">
+            <div class="detail-label">{{ item.label }}</div>
+            <div class="detail-text">{{ item.text }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </details>
+    </li>
+    {% else %}
+      <li class="empty">{% if lang == 'zh' %}暂无 checkpoint。{% else %}No checkpoints yet.{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>

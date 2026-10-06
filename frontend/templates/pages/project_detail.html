@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %}{{ project.brief.title }} · HAA{% endblock %}
+{% block content %}
+
+{% set phases = ['pr', 'p1', 'arv', 'p2', 'ea', 'p3', 'done'] %}
+{% set phase_names_zh = {'pr': '简报', 'p1': '前体', 'arv': '遴选', 'p2': '实验', 'ea': '评析', 'p3': '论文', 'done': '交付'} %}
+{% set phase_names_en = {'pr': 'Brief', 'p1': 'Phase I', 'arv': 'Select', 'p2': 'Phase II', 'ea': 'Review', 'p3': 'Phase III', 'done': 'Done'} %}
+{% set done_index = phases.index(project.phase.value) if project.phase.value in phases else 0 %}
+
+<div class="row" style="align-items:center;">
+  <a class="btn btn-sm" href="/projects">← {% if lang == 'zh' %}项目列表{% else %}Projects{% endif %}</a>
+  <div class="grow">
+    <h1 style="margin:0.2rem 0;">{{ project.brief.title }}</h1>
+    <span class="mono muted">{{ project.id }}</span>
+  </div>
+  <span class="badge-wrap">
+    {% if project.is_moribund %}<span class="moribund-flag">⚠ {% if lang == 'zh' %}濒死{% else %}Moribund{% endif %}</span>{% endif %}
+    <span class="badge {{ project.status.value | project_status_class }}">{{ project.status.value }}</span>
+  </span>
+</div>
+
+<div class="stepper">
+  {% for ph in phases %}
+    {% if loop.index0 < done_index %}
+      <span class="pstep done">{{ (phase_names_zh if lang == 'zh' else phase_names_en)[ph] }}</span>
+    {% elif loop.index0 == done_index %}
+      <span class="pstep current">{{ (phase_names_zh if lang == 'zh' else phase_names_en)[ph] }}</span>
+    {% else %}
+      <span class="pstep next">{{ (phase_names_zh if lang == 'zh' else phase_names_en)[ph] }}</span>
+    {% endif %}
+    {% if not loop.last %}<span class="arrow">→</span>{% endif %}
+  {% endfor %}
+</div>
+
+{% if project.is_moribund %}
+<div class="banner banner-red">
+  <strong>⚠ {% if lang == 'zh' %}项目处于濒死状态{% else %}Project is MORIBUND{% endif %}</strong>
+  {% if project.moribund_reason %}<div>{{ project.moribund_reason }}</div>{% endif %}
+  {% if project.moribund_diagnostic %}
+  <details class="details" style="margin-top:8px;">
+    <summary>{% if lang == 'zh' %}查看诊断报告{% else %}View diagnostic report{% endif %}</summary>
+    <div class="md-body md-panel">{{ project.moribund_diagnostic | md }}</div>
+  </details>
+  {% endif %}
+  {# --- 手动返工：濒死状态可选目标（按宏状态机反向箭头） --- #}
+  {% if rework_targets %}
+  <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+    <strong style="font-size:0.9rem;">{% if lang == 'zh' %}返工至：{% else %}Rework to:{% endif %}</strong>
+    {% for t in rework_targets %}
+    {% set tname = {'p1': ('重跑 P1（清空前体）' if lang == 'zh' else 'Re-run P1'),
+                    'p2': ('重跑 P2 实验' if lang == 'zh' else 'Re-run P2'),
+                    'arv': ('回到 ARV 重选前体' if lang == 'zh' else 'Back to ARV')}.get(t, t) %}
+    <form method="post" action="/projects/{{ project.id }}/rework"
+          onsubmit="return confirm('{% if lang == 'zh' %}确认从濒死返工至【{{ tname }}】？\n\n将清除濒死状态并开始执行；进行中的数据可能被重置。{% else %}Confirm rework to [{{ tname }}]?\n\nThe moribund state will be cleared and execution restarts.{% endif %}');">
+      <input type="hidden" name="target" value="{{ t }}">
+      <button class="btn btn-warn" type="submit">↩ {{ tname }}</button>
+    </form>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% set ctx = {'project': project, 'linked': linked, 'candidate_rows': candidate_rows,
+              'events': events, 'running_now': running_now, 'lang': lang} %}
+
+{% if project.phase.value == 'pr' %}
+<div class="section">
+  <h3>{% if lang == 'zh' %}研究简报（可编辑）{% else %}Research Brief (editable){% endif %}</h3>
+  {% if brief_error %}
+  <div class="banner banner-red" style="margin-bottom:10px;">⚠ {{ brief_error }}</div>
+  {% endif %}
+  <form method="post" action="/projects/{{ project.id }}/brief" style="display:grid;gap:10px;">
+    <div>
+      <label class="form-label">{% if lang == 'zh' %}标题{% else %}Title{% endif %}</label>
+      <input type="text" name="title" value="{{ project.brief.title }}" class="form-input" required>
+    </div>
+    <div>
+      <label class="form-label">{% if lang == 'zh' %}问题域{% else %}Problem area{% endif %}</label>
+      <textarea name="problem_area" rows="4" class="form-input" required>{{ project.brief.problem_area }}</textarea>
+    </div>
+    <div>
+      <label class="form-label">{% if lang == 'zh' %}研究方向{% else %}Track{% endif %}</label>
+      <select name="track" class="form-input">
+        <option value="theory" {{ 'selected' if project.brief.track == 'theory' else '' }}>theory</option>
+        <option value="systems" {{ 'selected' if project.brief.track == 'systems' else '' }}>systems</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label">{% if lang == 'zh' %}约束（每行一条）{% else %}Constraints (one per line){% endif %}</label>
+      <textarea name="constraints" rows="3" class="form-input" placeholder="{% if lang == 'zh' %}每行一条硬约束{% else %}One constraint per line{% endif %}">{{ project.brief.constraints | join('\n') }}</textarea>
+    </div>
+    <div>
+      <label class="form-label">{% if lang == 'zh' %}排除方向（每行一条）{% else %}Exclusions (one per line){% endif %}</label>
+      <textarea name="exclusions" rows="2" class="form-input" placeholder="{% if lang == 'zh' %}每行一条要避开的方向{% else %}One exclusion per line{% endif %}">{{ project.brief.exclusions | join('\n') }}</textarea>
+    </div>
+    <button class="btn" type="submit">💾 {% if lang == 'zh' %}保存简报{% else %}Save Brief{% endif %}</button>
+  </form>
+  <div class="help" style="margin-top:6px;">{% if lang == 'zh' %}PR 阶段可自由编辑简报。启动 P1 后简报锁定。{% else %}Brief is editable in PR phase. Locked once P1 starts.{% endif %}</div>
+</div>
+
+<div class="section">
+  <h3>{% if lang == 'zh' %}超参数{% else %}Hyperparameters{% endif %}</h3>
+  <div class="kv">
+    <div class="item"><div class="k">SEEK {% if lang == 'zh' %}基数{% else %}count{% endif %}</div><div class="v">{{ project.hyperparams.seek_base_count }}</div></div>
+    <div class="item"><div class="k">{% if lang == 'zh' %}输出候选上限{% else %}Output cap{% endif %}</div><div class="v">{{ project.hyperparams.output_candidate_count }}</div></div>
+    <div class="item"><div class="k">{% if lang == 'zh' %}自动放行{% else %}Auto-approve{% endif %}</div><div class="v">{{ project.hyperparams.auto_approve_human_review }}</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="row" style="gap:10px;">
+    <form method="post" action="/projects/{{ project.id }}/start">
+      <button class="btn btn-primary" type="submit">{% if lang == 'zh' %}▶ 启动 P1{% else %}▶ Start P1{% endif %}</button>
+    </form>
+    <form method="post" action="/projects/{{ project.id }}/abort"
+          onsubmit="return confirm('{% if lang == 'zh' %}确认废止该项目？此操作不可恢复。{% else %}Abort this project? This cannot be undone.{% endif %}');">
+      <button class="btn btn-danger" type="submit">{% if lang == 'zh' %}❌ 废止{% else %}Abort{% endif %}</button>
+    </form>
+  </div>
+  <div class="help" style="margin-top:8px;">{% if lang == 'zh' %}启动后 P1 批量前体生产将在后台运行。{% else %}Starting P1 runs the precursor batch in the background.{% endif %}</div>
+</div>
+{% endif %}
+
+{% if project.phase.value == 'p1' %}
+  {% include "partials/project_status.html" %}
+  {% include "partials/project_progress.html" %}
+  {% include "partials/candidate_table.html" %}
+{% endif %}
+
+{% if project.phase.value in ['p1', 'p2', 'p3'] %}
+<div class="section">
+  <form method="post" action="/projects/{{ project.id }}/abort"
+        onsubmit="return confirm('{% if lang == 'zh' %}确认废止该项目？此操作不可恢复，所有进度将终止。{% else %}Abort this project? This cannot be undone; all progress will stop.{% endif %}');">
+    <button class="btn btn-danger" type="submit">❌ {% if lang == 'zh' %}废止项目{% else %}Abort Project{% endif %}</button>
+  </form>
+</div>
+{% endif %}
+
+{% if project.phase.value == 'arv' %}
+  {% include "partials/precursor_cards.html" %}
+  {% include "partials/candidate_table.html" %}
+  <div class="section">
+    <div class="row" style="gap:10px; flex-wrap:wrap;">
+      {% for t in rework_targets %}
+      {% set tname = {'p1': ('返工 P1（清空前体重跑）' if lang == 'zh' else 'Rework P1'),
+                      'p2': ('直接进 P2' if lang == 'zh' else 'To P2'),
+                      'arv': ('留在 ARV' if lang == 'zh' else 'Stay')}.get(t, t) %}
+      <form method="post" action="/projects/{{ project.id }}/rework"
+            onsubmit="return confirm('{% if lang == 'zh' %}确认返工至【{{ tname }}】？现有前体将被清空并重新生产。{% else %}Confirm rework to [{{ tname }}]? Precursors will be cleared.{% endif %}');">
+        <input type="hidden" name="target" value="{{ t }}">
+        <button class="btn btn-warn" type="submit">↩ {{ tname }}</button>
+      </form>
+      {% endfor %}
+      <form method="post" action="/projects/{{ project.id }}/abort"
+            onsubmit="return confirm('{% if lang == 'zh' %}确认废止该项目？此操作不可恢复。{% else %}Abort this project? This cannot be undone.{% endif %}');">
+        <button class="btn btn-danger" type="submit">{% if lang == 'zh' %}废止 / Abort{% else %}Abort{% endif %}</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+{% if project.phase.value == 'p2' %}
+  {% include "partials/project_status.html" %}
+  {% include "partials/project_progress.html" %}
+  <div class="section">
+    <h3>{% if lang == 'zh' %}实验代码{% else %}Experiment code{% endif %}</h3>
+    {% if project.exp_code_dir %}
+      <p class="mono">{{ project.exp_code_dir }}</p>
+    {% else %}
+      <div class="empty">{% if lang == 'zh' %}CODE_GEN 尚未完成。{% else %}CODE_GEN not finished yet.{% endif %}</div>
+    {% endif %}
+  </div>
+{% endif %}
+
+{% if project.phase.value == 'ea' %}
+  <div class="section">
+    <h3>{% if lang == 'zh' %}实验结果{% else %}Experiment results{% endif %}</h3>
+    {% if project.exp_results %}
+      {% set metrics = project.exp_results.get('metrics', {}) %}
+      {% if metrics %}
+      <table>
+        <thead><tr><th>{% if lang == 'zh' %}指标{% else %}Metric{% endif %}</th><th>{% if lang == 'zh' %}数值{% else %}Value{% endif %}</th></tr></thead>
+        <tbody>
+        {% for k, v in metrics.items() %}
+          <tr><td class="mono">{{ k }}</td><td>{{ v }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+      {% set analysis = project.exp_results.get('analysis', {}) %}
+      {% if analysis %}
+        {% if analysis.get('summary') %}<h3 style="margin-top:14px;">{% if lang == 'zh' %}分析摘要{% else %}Analysis summary{% endif %}</h3><p>{{ analysis['summary'] }}</p>{% endif %}
+        {% if analysis.get('figures') %}
+          <h3 style="margin-top:14px;">{% if lang == 'zh' %}可视化建议{% else %}Figure suggestions{% endif %}</h3>
+          <ul>{% for f in analysis['figures'] %}<li>{{ f }}</li>{% endfor %}</ul>
+        {% endif %}
+      {% endif %}
+      <div class="kv" style="margin-top:12px;">
+        {% if project.exp_results.get('rounds_a') is not none %}<div class="item"><div class="k">Phase A {% if lang == 'zh' %}轮次{% else %}rounds{% endif %}</div><div class="v">{{ project.exp_results['rounds_a'] }}</div></div>{% endif %}
+        {% if project.exp_results.get('rounds_b') is not none %}<div class="item"><div class="k">Phase B {% if lang == 'zh' %}轮次{% else %}rounds{% endif %}</div><div class="v">{{ project.exp_results['rounds_b'] }}</div></div>{% endif %}
+      </div>
+    {% else %}
+      <div class="empty">{% if lang == 'zh' %}暂无实验结果。{% else %}No experiment results yet.{% endif %}</div>
+    {% endif %}
+  </div>
+
+  {% if project.moribund_diagnostic %}
+  <div class="section">
+    <h3>LLM {% if lang == 'zh' %}诊断报告{% else %}diagnostic{% endif %}</h3>
+    <div class="md-body md-panel">{{ project.moribund_diagnostic | md }}</div>
+  </div>
+  {% endif %}
+
+  <div class="section">
+    <h3>{% if lang == 'zh' %}操作{% else %}Actions{% endif %}</h3>
+    <div class="row" style="gap:10px; flex-wrap:wrap;">
+      <form method="post" action="/projects/{{ project.id }}/advance">
+        <button class="btn btn-success" type="submit">✅ {% if lang == 'zh' %}满意→进入 P3{% else %}Satisfied → P3{% endif %}</button>
+      </form>
+      {% for t in rework_targets %}
+      {% set tname = {'p2': ('改代码→重跑 P2' if lang == 'zh' else 'Retry P2'),
+                      'arv': ('换前体→回到 ARV' if lang == 'zh' else 'Back to ARV'),
+                      'p1': ('彻底回炉→重跑 P1' if lang == 'zh' else 'Full redo → P1')}.get(t, t) %}
+      <form method="post" action="/projects/{{ project.id }}/rework"
+            onsubmit="return confirm('{% if lang == 'zh' %}确认返工至【{{ tname }}】？当前实验结果将被弃置。{% else %}Confirm rework to [{{ tname }}]? Current results are discarded.{% endif %}');">
+        <input type="hidden" name="target" value="{{ t }}">
+        <button class="btn btn-warn" type="submit">↩ {{ tname }}</button>
+      </form>
+      {% endfor %}
+      <form method="post" action="/projects/{{ project.id }}/abort"
+            onsubmit="return confirm('{% if lang == 'zh' %}确认废止该项目？此操作不可恢复。{% else %}Abort this project? This cannot be undone.{% endif %}');">
+        <button class="btn btn-danger" type="submit">❌ {% if lang == 'zh' %}废止{% else %}Abort{% endif %}</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+{% if project.phase.value == 'p3' %}
+  {% include "partials/project_status.html" %}
+  {% include "partials/project_progress.html" %}
+{% endif %}
+
+{% if project.phase.value == 'done' %}
+  <div class="section">
+    <h3>{% if lang == 'zh' %}交付物{% else %}Deliverable{% endif %}</h3>
+    {% if project.p3_deliverable_path %}
+      <p class="mono">{{ project.p3_deliverable_path }}</p>
+    {% else %}
+      <div class="empty">{% if lang == 'zh' %}打包尚未完成。{% else %}Packaging not finished yet.{% endif %}</div>
+    {% endif %}
+    {% if project.p3_paper_dir %}<p class="muted">{% if lang == 'zh' %}论文目录{% else %}Paper dir{% endif %}: <span class="mono">{{ project.p3_paper_dir }}</span></p>{% endif %}
+  </div>
+  <div class="section">
+    <form method="post" action="/projects/{{ project.id }}/complete">
+      <button class="btn btn-success" type="submit">{% if lang == 'zh' %}批准完成 / Complete{% else %}Complete{% endif %}</button>
+    </form>
+  </div>
+{% endif %}
+
+{% if project.is_terminal %}
+<div class="section danger-zone">
+  <h3>⚠ {% if lang == 'zh' %}危险操作{% else %}Danger Zone{% endif %}</h3>
+  <div class="banner banner-red" style="margin-bottom:10px;">
+    {% if lang == 'zh' %}删除项目将<strong>永久移除</strong>该项目及其所有 Campaign、候选、检查点、事件数据。项目唯一编号将回流（可被新项目复用）。此操作不可撤销。{% else %}Deleting a project <strong>permanently removes</strong> it and all linked campaigns, candidates, checkpoints, and events. The project ID is recycled. This cannot be undone.{% endif %}
+  </div>
+  <form method="post" action="/projects/{{ project.id }}/delete"
+        onsubmit="return confirm('{% if lang == 'zh' %}确认删除项目？所有数据将永久移除，无法恢复。项目编号将回流。{% else %}Delete project? All data permanently removed. Project ID recycled.{% endif %}');">
+    <button class="btn btn-danger" type="submit">🗑️ {% if lang == 'zh' %}删除项目（永久移除）{% else %}Delete Project (permanent){% endif %}</button>
+  </form>
+</div>
+{% endif %}
+
+<details class="details section">
+  <summary>{% if lang == 'zh' %}📄 Brief 全文（点击展开）{% else %}📄 Full brief (click to expand){% endif %}</summary>
+  <div style="padding-top:10px;">
+    <p><strong>{% if lang == 'zh' %}问题域{% else %}Problem area{% endif %}</strong></p>
+    <div class="md-body">{{ project.brief.problem_area | md }}</div>
+    {% if project.brief.constraints %}<p><strong>{% if lang == 'zh' %}约束{% else %}Constraints{% endif %}</strong></p><ul>{% for c in project.brief.constraints %}<li>{{ c }}</li>{% endfor %}</ul>{% endif %}
+    {% if project.brief.exclusions %}<p><strong>{% if lang == 'zh' %}排除方向{% else %}Exclusions{% endif %}</strong></p><ul>{% for c in project.brief.exclusions %}<li>{{ c }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+</details>
+{% endblock %}

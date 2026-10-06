@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Campaign {{ campaign.id[:8] }}{% endblock %}
+{% block content %}
+<div class="row" style="justify-content:space-between; align-items:center">
+  <div>
+    <h1>{{ campaign.title or "(untitled)" }}</h1>
+    <div class="muted mono">{{ campaign.id }}</div>
+  </div>
+  <a class="btn" href="/campaigns/{{ campaign.id }}/paper">📄 View Paper</a>
+</div>
+
+<div class="section">
+  <h3>Status &amp; Budget</h3>
+  {% include "partials/campaign_status.html" %}
+</div>
+
+<div class="section">
+  <h3>Progress ({{ checkpoints | length }} checkpoints)</h3>
+  {% include "partials/progress_timeline.html" %}
+</div>
+
+<div class="section">
+  <h3>Candidates ({{ candidates | length }})</h3>
+  {% include "partials/candidate_queue.html" %}
+</div>
+{% endblock %}

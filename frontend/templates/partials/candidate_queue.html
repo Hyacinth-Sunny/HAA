@@ -1,0 +1,19 @@
+{# candidate queue table (context: candidates list) #}
+<table>
+  <thead><tr><th>#</th><th>slug</th><th>title</th><th>status</th><th>grade</th><th>rounds (d/r)</th><th>sig/win</th></tr></thead>
+  <tbody>
+  {% for c in candidates %}
+    <tr>
+      <td class="id">{{ c.queue_index }}</td>
+      <td class="mono">{{ c.slug }}</td>
+      <td>{{ c.title }}</td>
+      <td><span class="badge {{ c.status.value | status_class }}">{{ c.status.value }}</span></td>
+      <td>{{ c.grade.value if c.grade else "—" }}</td>
+      <td class="muted">{{ c.design_rounds }}/{{ c.review_rounds }}</td>
+      <td class="muted">{{ "%.1f"|format(c.significance) }}/{{ "%.1f"|format(c.win_odds) }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="empty">No candidates yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>

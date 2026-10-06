@@ -1,0 +1,14 @@
+{# paper sections (context: paper dict or None) #}
+<div id="paper-body" class="paper-prose">
+{% if paper %}
+  <h2>{{ paper.get("title", "") }}</h2>
+  {% for sec in ["abstract", "intro", "background", "method", "eval", "related", "conclusion"] %}
+    {% if paper.get(sec) %}
+      <h4>{{ sec | upper }}</h4>
+      <div class="md-body">{{ paper[sec] | md }}</div>
+    {% endif %}
+  {% endfor %}
+{% else %}
+  <div class="empty">Paper not written yet (campaign hasn't reached WRITE).</div>
+{% endif %}
+</div>

@@ -1,0 +1,30 @@
+# HAA 冒烟配置 — DeepSeek v4 (deepseek-chat) + 收紧循环/预算
+# 用法：HAA_CONFIG=config/smoke-deepseek.yaml + DEEPSEEK_API_KEY / TAVILY_API_KEY 环境变量
+llm:
+  model: "deepseek/deepseek-chat"
+  max_retries: 2
+  api_base: ""                 # litellm 内置 deepseek 路由
+  api_key_env: "DEEPSEEK_API_KEY"
+
+timeouts:
+  llm: 300
+  stage: 1200
+
+budget:
+  per_campaign: 3.0            # 小预算控制消耗（deepseek-chat 极便宜，$3 足够一条完整流水线）
+  global_limit: 5.0
+
+pipeline:
+  max_design_rounds: 2         # 收紧 DESIGN⇄VERIFY
+  max_review_rounds: 2         # 收紧 REVIEW⇄REFINE
+  seek_candidate_count: 3      # 少候选省消耗
+  output_candidate_count: 2    # SEEK 后幸存到筛查的上限（v0.4 新增）
+
+storage:
+  db_path: "data/smoke.db"     # 隔离冒烟 DB，不污染主库
+  campaigns_dir: "data/smoke-campaigns"
+
+logging:
+  level: "INFO"
+  format: "text"
+  output: "stdout"

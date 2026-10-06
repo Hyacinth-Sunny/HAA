@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{% if lang == 'zh' %}主页{% else %}Home{% endif %}{% endblock %}
+{% block content %}
+<div class="hero">
+  <h1>HAA — Hyacinth Automated Analyzer</h1>
+  <div class="subtitle">
+    {% if lang == 'zh' %}自动科研与论文生产工具{% else %}Automated Research &amp; Paper Production{% endif %}
+  </div>
+
+  <div class="flow">
+    <span class="step">PR</span><span class="arrow">→</span>
+    <span class="step">P1</span><span class="arrow">→</span>
+    <span class="step">ARV</span><span class="arrow">→</span>
+    <span class="step">P2</span><span class="arrow">→</span>
+    <span class="step">EA</span><span class="arrow">→</span>
+    <span class="step">P3</span><span class="arrow">→</span>
+    <span class="step">DONE</span>
+  </div>
+
+  <div class="card" style="max-width:760px; margin:0 auto; text-align:left;">
+    <p>
+      {% if lang == 'zh' %}
+      给 HAA 一份研究简报（方向 / 约束 / 排除项），它会自动走完三阶段：
+      <strong>P1</strong> 批量产出论文前体（想点子、查重、筛查、设计证明、定级、写作、盲审、精修），
+      <strong>P2</strong> 生成并调试实验代码、执行实验、分析结果，
+      <strong>P3</strong> 整合为完整论文（LaTeX + PDF）并打包交付。
+      人工只需在 ARV / EA / 最终交付三个关卡做决策。
+      {% else %}
+      Give HAA a research brief (direction / constraints / exclusions) and it
+      automatically runs three phases: <strong>P1</strong> produces paper
+      precursors in batch (idea seeking, dedup, screening, proof design,
+      grading, writing, blind review, refinement), <strong>P2</strong> generates
+      and debugs experiment code, executes and analyzes experiments, and
+      <strong>P3</strong> integrates everything into a full LaTeX paper with a
+      packaged deliverable. Human decisions are only needed at the ARV / EA /
+      final-delivery gates.
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="cta">
+    <a class="btn btn-primary" href="/projects">
+      {% if lang == 'zh' %}进入项目情况 →{% else %}View Projects →{% endif %}
+    </a>
+  </div>
+</div>
+
+{% set not_started = projects | selectattr('status.value', 'eq', 'not_started') | list %}
+{% set in_progress = projects | selectattr('status.value', 'in', ['in_progress', 'moribund']) | list %}
+{% set completed = projects | selectattr('status.value', 'eq', 'completed') | list %}
+<div class="cards">
+  <div class="card"><div class="k">{% if lang == 'zh' %}项目总数{% else %}Projects{% endif %}</div><div class="v">{{ projects | length }}</div></div>
+  <div class="card"><div class="k">{% if lang == 'zh' %}进行中{% else %}In Progress{% endif %}</div><div class="v">{{ in_progress | length }}</div></div>
+  <div class="card"><div class="k">{% if lang == 'zh' %}已完成{% else %}Completed{% endif %}</div><div class="v">{{ completed | length }}</div></div>
+  <div class="card"><div class="k">{% if lang == 'zh' %}累计花费{% else %}Total Spent{% endif %}</div><div class="v">{{ stats.total_budget_used | money }}</div></div>
+</div>
+
+<div class="detail-grid">
+  <div class="section">
+    <h3>{% if lang == 'zh' %}最近项目{% else %}Recent Projects{% endif %}</h3>
+    {% if projects %}
+    <table>
+      <thead><tr>
+        <th>{% if lang == 'zh' %}项目名称{% else %}Title{% endif %}</th>
+        <th>{% if lang == 'zh' %}阶段{% else %}Phase{% endif %}</th>
+        <th>{% if lang == 'zh' %}状态{% else %}Status{% endif %}</th>
+      </tr></thead>
+      <tbody>
+      {% for p in projects[-5:] | reverse %}
+        <tr>
+          <td><a href="/projects/{{ p.id }}"><strong>{{ p.brief.title }}</strong></a><br><span class="mono muted">{{ p.id[:12] }}</span></td>
+          <td><span class="badge {{ p.phase.value | phase_class }}">{{ p.phase.value | upper }}</span></td>
+          <td>
+            <span class="badge-wrap">
+              {% if p.is_moribund %}<span class="moribund-flag">⚠ {% if lang == 'zh' %}濒死{% else %}Moribund{% endif %}</span>{% endif %}
+              <span class="badge {{ p.status.value | project_status_class }}">{{ p.status.value }}</span>
+            </span>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+      {% if lang == 'zh' %}还没有项目，点击「进入项目情况」创建第一个项目。{% else %}No projects yet — head to Projects to create the first one.{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="section">
+    <h3>{% if lang == 'zh' %}最近活动{% else %}Recent Activity{% endif %}</h3>
+    {% if events %}
+    <ul class="timeline">
+      {% for e in events | reverse %}
+      <li>
+        <span class="ts">{{ e.created_at | dtime }}</span>
+        <span><span class="badge {{ e.event_type | event_class }}">{{ e.event_type }}</span>
+        {% if e.stage %}<span class="mono muted"> · {{ e.stage }}</span>{% endif %}
+        {% if e.cost_usd %}<span class="muted"> · {{ e.cost_usd | money }}</span>{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">{% if lang == 'zh' %}暂无活动。{% else %}No activity yet.{% endif %}</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

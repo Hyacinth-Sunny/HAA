@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}New Campaign{% endblock %}
+{% block content %}
+<h1>New Campaign</h1>
+<form action="/campaigns" method="post">
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+  <label>Title <span class="help">(working title / theme)</span></label>
+  <input name="title" required value="{{ title | default('') }}">
+  <label>Problem area</label>
+  <textarea name="problem_area" required>{{ problem_area | default('') }}</textarea>
+  <label>Track</label>
+  <select name="track">
+    <option value="theory" {{ 'selected' if track | default('theory') == 'theory' else '' }}>theory (proofs / bounds)</option>
+    <option value="systems" {{ 'selected' if track | default('theory') == 'systems' else '' }}>systems (algorithms / measurements)</option>
+  </select>
+  <label>Constraints <span class="help">(one per line)</span></label>
+  <textarea name="constraints">{{ constraints | default('') }}</textarea>
+  <label>Exclusions <span class="help">(avoid — one per line)</span></label>
+  <textarea name="exclusions">{{ exclusions | default('') }}</textarea>
+  <div style="margin-top:1rem">
+    <button class="btn btn-primary" type="submit">Create Campaign</button>
+    <a class="btn" href="/">Cancel</a>
+  </div>
+</form>
+{% endblock %}

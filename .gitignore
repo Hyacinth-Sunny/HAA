@@ -1,0 +1,42 @@
+# Runtime data (HM-Pro: keep out of git).
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Secrets
+.env
+*.key
+
+# Local reference material & working docs (not for public repo)
+ref/
+MDs/
+
+# Agent/tool state dirs
+.mimosa/
+.zcode/
+.claude_task*.txt
+node_modules/
+*.log

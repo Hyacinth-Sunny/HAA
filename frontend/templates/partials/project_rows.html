@@ -1,0 +1,26 @@
+{# project table body; self-polls every 5s (context: projects list, lang) #}
+<tbody id="project-rows"
+       hx-get="/partials/projects?lang={{ lang }}"
+       hx-trigger="every 5s" hx-swap="outerHTML">
+{% for p in projects %}
+  <tr>
+    <td class="id">{{ p.id[:12] }}</td>
+    <td><a href="/projects/{{ p.id }}"><strong>{{ p.brief.title }}</strong></a></td>
+    <td><span class="badge {{ p.phase.value | phase_class }}">{{ p.phase.value | upper }}</span></td>
+    <td>
+      <span class="badge-wrap">
+        {% if p.is_moribund %}<span class="moribund-flag">⚠ {% if lang == 'zh' %}濒死{% else %}Moribund{% endif %}</span>{% endif %}
+        <span class="badge {{ p.status.value | project_status_class }}">{{ p.status.value }}</span>
+      </span>
+    </td>
+    <td class="muted">{{ p.precursors | length }}</td>
+    <td class="mono">{{ p.created_at | dt }}</td>
+    <td class="mono">{{ p.updated_at | dt }}</td>
+    <td><a class="btn btn-sm" href="/projects/{{ p.id }}">{% if lang == 'zh' %}进入项目{% else %}Enter{% endif %}</a></td>
+  </tr>
+{% else %}
+  <tr><td colspan="8" class="empty">
+    {% if lang == 'zh' %}还没有项目。<a href="/projects/new">创建第一个 →</a>{% else %}No projects yet. <a href="/projects/new">Create one →</a>{% endif %}
+  </td></tr>
+{% endfor %}
+</tbody>

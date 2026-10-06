@@ -1,0 +1,83 @@
+{# ARV precursor cards; self-polls every 3s (context: project, lang) #}
+{# v1.0.2：多选（checkbox）+ 下载 .md；此前单选表单提交到不存在的路由（404） #}
+{% set active = project.status.value == 'in_progress' and project.phase.value == 'arv' %}
+{% set selected_ids = project.selected_precursor_campaign_ids or ([project.selected_precursor_campaign_id] if project.selected_precursor_campaign_id else []) %}
+<div id="precursor-cards"
+     {% if active %}hx-get="/partials/projects/{{ project.id }}/precursors?lang={{ lang }}"
+     hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+  <h2>{% if lang == 'zh' %}人工遴选 — 论文前体{% else %}ARV — Precursors{% endif %}</h2>
+  {% if project.precursors %}
+  <form method="post" action="/projects/{{ project.id }}/select" id="precursor-select-form">
+    {% for pre in project.precursors %}
+    <div class="precursor-card">
+      <div class="row" style="justify-content:space-between;">
+        <div style="display:flex; gap:10px; align-items:flex-start;">
+          {% if active %}
+          <input type="checkbox" name="campaign_ids" value="{{ pre.campaign_id }}"
+                 form="precursor-select-form" style="margin-top:6px;"
+                 {% if pre.campaign_id in selected_ids %}checked{% endif %}>
+          {% endif %}
+          <div>
+            <h3 style="margin:0;">{{ pre.candidate_title }}</h3>
+            <div class="mono muted">{{ pre.candidate_slug }} · {{ pre.campaign_id[:12] }}</div>
+          </div>
+        </div>
+        <div class="row" style="gap:8px; align-items:center;">
+          {% if pre.paper.get('degraded') %}
+          <span class="badge badge-outline-yellow">DEGRADED</span>
+          {% endif %}
+          <span class="badge {{ 'badge-outline-green' if pre.grade == 'solid' else 'badge-outline-yellow' }}">GRADE: {{ pre.grade or '?' }}</span>
+          <a class="btn btn-sm" href="/projects/{{ project.id }}/precursors/{{ pre.campaign_id }}/download">⬇ .md</a>
+        </div>
+      </div>
+
+      {% if pre.paper.get('abstract') %}
+      <div class="paper-preview" style="margin-top:10px;">
+        <strong>{% if lang == 'zh' %}摘要{% else %}Abstract{% endif %}:</strong> {{ pre.paper['abstract'] | truncate(280) }}
+      </div>
+      {% endif %}
+
+      {% if pre.review %}
+      <div class="score-row" style="margin-top:12px;">
+        {% for k in ['correctness', 'quality', 'industry', 'fidelity'] %}
+          {% set score = pre.review.get(k) %}
+          {% if score is not none %}
+          <div class="score">
+            <div class="muted">{{ k }}: {{ score }}</div>
+            <div class="bar"><span style="width:{{ (score | float / 5 * 100) if score is number else 0 }}%"></span></div>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if pre.exp_spec %}
+      <details class="details" style="margin-top:10px;">
+        <summary>{% if lang == 'zh' %}实验设计摘要{% else %}Experiment design summary{% endif %}</summary>
+        <div class="muted" style="padding-top:6px; font-size:0.9rem;">
+          {% if pre.exp_spec.get('objective') %}<p><strong>Objective:</strong> {{ pre.exp_spec['objective'] }}</p>{% endif %}
+          {% if pre.exp_spec.get('methodology') %}<p><strong>Methodology:</strong> {{ pre.exp_spec['methodology'] }}</p>{% endif %}
+          {% if pre.exp_spec.get('metrics') %}<p><strong>Metrics:</strong> {{ pre.exp_spec['metrics'] }}</p>{% endif %}
+          {% if pre.exp_spec.get('summary') %}<p>{{ pre.exp_spec['summary'] }}</p>{% endif %}
+        </div>
+      </details>
+      {% endif %}
+
+      {% if pre.campaign_id in selected_ids %}
+      <div style="margin-top:12px;"><span class="badge badge-green">✓ {% if lang == 'zh' %}已选定{% else %}Selected{% endif %}</span></div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if active %}
+    <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
+      <button class="btn btn-primary" type="submit">
+        {% if lang == 'zh' %}选定（可勾选多个）{% else %}Select (multi){% endif %}
+      </button>
+      <span class="muted">{% if lang == 'zh' %}首个勾选项作为主前体进入 P2，其余留档备选。{% else %}The first checked item leads into P2; the rest are kept as alternates.{% endif %}</span>
+    </div>
+    {% endif %}
+  </form>
+  {% else %}
+    <div class="section empty">{% if lang == 'zh' %}前体正在生产中，请稍候…{% else %}Precursors still being produced — wait a moment…{% endif %}</div>
+  {% endif %}
+</div>

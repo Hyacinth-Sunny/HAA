@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{% if lang == 'zh' %}新建项目{% else %}New Project{% endif %}{% endblock %}
+{% block content %}
+<div class="row" style="align-items:center;">
+  <h1 style="margin:0;">{% if lang == 'zh' %}新建项目{% else %}New Project{% endif %}</h1>
+  <a class="btn btn-sm" href="/projects">← {% if lang == 'zh' %}返回{% else %}Back{% endif %}</a>
+</div>
+
+<div class="section" style="margin-top:0.8rem;">
+  <h3>{% if lang == 'zh' %}原版简报直接投喂{% else %}Compile a Raw Brief{% endif %}</h3>
+  <p class="help">{% if lang == 'zh' %}上传自由格式 Markdown 研究简报 → LLM 编译为结构化字段并预填下方表单（约束逐字保留、知识文件路径自动提取）。编译结果经你核对后才生效。{% else %}Upload a free-form Markdown research brief — it is compiled into the structured fields below for your review before anything is created.{% endif %}</p>
+  {% if compiled_notice %}<div class="flash flash-ok">{{ compiled_notice }}</div>{% endif %}
+  <form action="/projects/upload-brief" method="post" enctype="multipart/form-data" style="display:flex; gap:0.8rem; align-items:center;">
+    <input type="file" name="file" accept=".md,.markdown,.txt" required>
+    <button class="btn" type="submit">{% if lang == 'zh' %}编译并预填{% else %}Compile &amp; Prefill{% endif %}</button>
+  </form>
+</div>
+
+<form action="/projects" method="post">
+  <div class="section">
+    {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+    <label>{% if lang == 'zh' %}项目名称{% else %}Title{% endif %} <span class="help">({% if lang == 'zh' %}工作标题/主题{% else %}working title / theme{% endif %})</span></label>
+    <input name="title" required value="{{ title | default('') }}">
+
+    <label>{% if lang == 'zh' %}问题域{% else %}Problem Area{% endif %}</label>
+    <textarea name="problem_area" required rows="4">{{ problem_area | default('') }}</textarea>
+
+    <label>{% if lang == 'zh' %}研究方向{% else %}Track{% endif %}</label>
+    <select name="track">
+      <option value="theory" {{ 'selected' if track | default('theory') == 'theory' else '' }}>{% if lang == 'zh' %}理论（证明/界）{% else %}theory (proofs / bounds){% endif %}</option>
+      <option value="systems" {{ 'selected' if track | default('theory') == 'systems' else '' }}>{% if lang == 'zh' %}系统（算法/测量）{% else %}systems (algorithms / measurements){% endif %}</option>
+    </select>
+
+    <label>{% if lang == 'zh' %}约束{% else %}Constraints{% endif %} <span class="help">({% if lang == 'zh' %}每行一条{% else %}one per line{% endif %})</span></label>
+    <textarea name="constraints">{{ constraints | default('') }}</textarea>
+
+    <label>{% if lang == 'zh' %}排除方向{% else %}Exclusions{% endif %} <span class="help">({% if lang == 'zh' %}每行一条，避免的方向{% else %}one per line, directions to avoid{% endif %})</span></label>
+    <textarea name="exclusions">{{ exclusions | default('') }}</textarea>
+
+    <label>{% if lang == 'zh' %}知识文件{% else %}Knowledge Files{% endif %} <span class="help">({% if lang == 'zh' %}每行一个文件路径（绝对或项目相对）。campaign 启动时自动复制进沙箱 knowledge/ 供 read_file 读取——研究原料。{% else %}one file path per line; staged into the campaign sandbox on start{% endif %})</span></label>
+    <textarea name="knowledge_files" rows="3">{{ knowledge_files | default('') }}</textarea>
+  </div>
+
+  <div class="section">
+    <h3>{% if lang == 'zh' %}P1 超参数{% else %}P1 Hyperparameters{% endif %}</h3>
+    <div class="kv">
+      <div class="item">
+        <div class="k">{% if lang == 'zh' %}SEEK 基数{% else %}SEEK Count{% endif %}</div>
+        <input type="number" name="seek_base_count" min="1" max="100" value="{{ seek_base_count | default(5) }}">
+      </div>
+      <div class="item">
+        <div class="k">{% if lang == 'zh' %}输出候选上限{% else %}Output Cap{% endif %}</div>
+        <input type="number" name="output_candidate_count" min="1" max="20" value="{{ output_candidate_count | default(3) }}">
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex; gap:0.8rem;">
+    <button class="btn btn-primary" type="submit">{% if lang == 'zh' %}创建项目{% else %}Create Project{% endif %}</button>
+    <a class="btn" href="/projects">{% if lang == 'zh' %}取消{% else %}Cancel{% endif %}</a>
+  </div>
+</form>
+{% endblock %}

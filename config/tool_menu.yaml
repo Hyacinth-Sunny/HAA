@@ -1,0 +1,133 @@
+# 声明式阶段工具菜单（大修计划书第一章 §3.7）
+#
+# 语义：某 stage 出现于此 → 以本文件为准（覆盖工具代码内的 stages 声明）；
+# stage 未出现 → 回退工具代码内声明。本文件由 M0 从旧注册表
+# haa/llm/tools.py 的 allowed_stages 逐字生成（2026-10-07），行为等价快照；
+# 后续调菜单只改本文件，不改代码。
+
+calculator:
+  - DESIGN
+  - EXP_FEASIBILITY
+  - EXP_SPEC
+  - GRADE
+  - SCREEN
+  - VERIFY
+
+describe_image:
+  - DESIGN
+  - EXP_FEASIBILITY
+  - EXP_SPEC
+  - NOVELTY
+  - REFINE
+  - REVIEW
+  - SCREEN
+  - SEEK
+  - WRITE
+
+edit_file:
+  - DESIGN
+  - REFINE
+  - SCREEN
+  - WRITE
+
+exec_bash:
+  - SCREEN
+  - VERIFY
+
+fetch_paper_fulltext:
+  - EXP_FEASIBILITY
+  - EXP_SPEC
+  - NOVELTY
+  - SCREEN
+  - SEEK
+
+grep:
+  - DESIGN
+  - EXP_FEASIBILITY
+  - EXP_SPEC
+  - GRADE
+  - NOVELTY
+  - REFINE
+  - REVIEW
+  - SCREEN
+  - SEEK
+  - VERIFY
+  - WRITE
+
+illustration_drawing:
+  - REFINE
+  - WRITE
+
+multi_agents:
+  - NOVELTY
+  - REVIEW
+  - SCREEN
+  - SEEK
+
+read_file:
+  - DESIGN
+  - EXP_FEASIBILITY
+  - EXP_SPEC
+  - GRADE
+  - REFINE
+  - REVIEW
+  - SCREEN
+  - SEEK
+  - VERIFY
+  - WRITE
+
+read_pdf:
+  - DESIGN
+  - EXP_FEASIBILITY
+  - EXP_SPEC
+  - GRADE
+  - NOVELTY
+  - REFINE
+  - REVIEW
+  - SCREEN
+  - SEEK
+  - VERIFY
+  - WRITE
+
+result_visualization:
+  - REFINE
+  - WRITE
+
+search_paper:
+  - EXP_FEASIBILITY
+  - EXP_SPEC
+  - NOVELTY
+  - SEEK
+
+to_do_write:
+  - DESIGN
+  - EXP_FEASIBILITY
+  - EXP_SPEC
+  - REFINE
+  - SCREEN
+  - VERIFY
+  - WRITE
+
+web_fetch:
+  - EXP_FEASIBILITY
+  - EXP_SPEC
+  - NOVELTY
+  - SEEK
+  - WRITE
+
+web_search:
+  - EXP_FEASIBILITY
+  - EXP_SPEC
+  - NOVELTY
+  - SCREEN
+  - SEEK
+  - VERIFY
+  - WRITE
+
+write_file:
+  - DESIGN
+  - EXP_SPEC
+  - REFINE
+  - SCREEN
+  - WRITE
+

@@ -561,9 +561,21 @@ class ProjectController:
         return None
 
     def _build_coding_agent(self, project: Project, work_dir: Path):
-        """Construct the coding agent (ClaudeCodeACP). Tests can inject a factory."""
+        """Construct the coding agent (ClaudeCodeACP). Tests can inject a factory.
+
+        大修 D2（v1.1）：ACP-Claude Code 通道停用保留——默认 ``acp.enabled:
+        false`` 时不可达，P2 默认执行路径由新 Harness 工具循环承担
+        （大修计划书第四章）；显式开启后才构造（降级实现，事件日志
+        须标注"降级执行"）。
+        """
         if self._coding_agent_factory is not None:
             return self._coding_agent_factory(project, work_dir)
+        if not getattr(self.config.acp, "enabled", False):
+            raise RuntimeError(
+                "ACP-Claude Code 通道已停用（大修 D2，默认 false）。"
+                "P2 默认执行路径由新 Harness 工具循环承担（大修计划书第四章"
+                "P2-a/b 批次施工）；如需临时降级请设 config acp.enabled: true。"
+            )
         from haa.coding_agent import ClaudeCodeACP
 
         campaign_id = project.selected_precursor_campaign_id or project.id

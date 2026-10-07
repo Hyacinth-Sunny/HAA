@@ -165,10 +165,12 @@ vision:
   api_key_env: "ZHIPU_API_KEY"    # 从环境变量读
   max_tokens: 2000
 
-# --- ACP (v0.6: HAA↔Claude Code 编码通道) -----------------------------------
-# acpx CLI 路径（空=自动探测：bundled OpenClaw > which acpx > npx acpx）。
-# 每个 campaign 独立会话（session 名 = prefix-campaign_id）。
+# --- ACP (v0.6: HAA↔Claude Code 编码通道；大修 D2 停用保留) -------------------
+# 大修第一章 D2（v1.1，2026-10-07）：模块挪至 haa/fallback/，默认停用——
+# P2 默认执行路径由新 Harness 工具循环承担；仅当新 Harness 编码能力
+# 大声失败且短期无法修复时，置 enabled: true 临时降级（事件日志会标注）。
 acp:
+  enabled: false                   # D2 停用保留（默认不可达）
   acpx_path: ""
   session_prefix: "haa"
   timeout_simple: 300              # 简单代码生成（秒）
@@ -185,3 +187,16 @@ memory:
   memory_dir: "data/memory"        # 相对 project_root
   injection_max_items: 8           # 注入 prompt 的墓碑条数上限
   inject_into_novelty: true        # NOVELTY 也注入（默认开）
+
+# --- Harness (大修第一章：自建 Harness；第六章特性开关登记处) ----------------
+harness:
+  tool_menu: "config/tool_menu.yaml"   # 声明式工具菜单（缺文件回退代码内声明）
+  write_gate_enabled: false            # 先读后写闸门（M1 强化后默认开）
+  features:                            # 特性开关：默认全关，逐里程碑打开
+    anchored_mode: false               # 第三章 §4 锚定模式（P1-a）
+    divergence: false                  # 第三章 §5 SEEK 发散-收敛（P1-b）
+    typed_duel: false                  # 第三章 §10 GRADE 分型对决（P1-c）
+    settlement: false                  # 第二章 §4 结算机制（M-c）
+    branch_tree: false                 # 第三章 §9 top-k 分支树（P1-c）
+    code_mode: false                   # 第一章 §11 run_code（第三批）
+    fallback_acp: false                # D2 降级开关（与 acp.enabled 双确认）

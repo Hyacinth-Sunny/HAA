@@ -273,14 +273,35 @@ class ACPConfig:
 
     acpx 是 ACP 协议的 CLI 客户端，HAA 通过 subprocess 调用它来委托
     Claude Code 进行代码生成/调试。详见《Coding Agent ACP迁移参考.md》。
+    大修 D2（v1.1，2026-10-07）：本通道**停用保留**——模块挪至
+    ``haa/fallback/``，``enabled`` 默认 false，不开启时 P2 默认执行路径
+    不可达；仅当新 Harness 在编码任务上大声失败且短期无法修复时，
+    打开此开关临时降级。
     """
 
+    enabled: bool = False  # D2 停用保留：默认 false（大修第一章 §4.3）
     acpx_path: str = ""  # 空=自动探测（bundled OpenClaw > which > npx）
     session_prefix: str = "haa"  # session 名前缀（实际名= prefix-campaign_id）
     timeout_simple: int = 300  # 简单代码生成（秒）
     timeout_complex: int = 600  # 复杂调试（秒）
     timeout_module: int = 1200  # 完整模块实现（秒）
     fallback_to_agentloop: bool = True  # CC 失败时降级到 AgentLoop
+
+
+@dataclass(frozen=True)
+class HarnessConfig:
+    """自建 Harness 配置（大修计划书第一章；第六章特性开关登记处）。
+
+    ``features`` 是全大修的特性开关表（Ch6 §4.3）：每个新机制一个开关、
+    默认关闭、逐里程碑打开——出问题关开关即回退，不需要回滚代码。
+    """
+
+    tool_menu: str = "config/tool_menu.yaml"  # 声明式工具菜单（缺文件回退代码声明）
+    write_gate_enabled: bool = False  # 先读后写闸门（M1 随五个底层工具强化后默认开）
+    features: tuple[tuple[str, bool], ...] = ()  # 特性开关（有序对，读代码侧转 dict）
+
+    def feature(self, name: str, default: bool = False) -> bool:
+        return dict(self.features).get(name, default)
 
 
 @dataclass(frozen=True)
@@ -299,6 +320,7 @@ class Config:
     vision: VisionConfig = field(default_factory=VisionConfig)
     acp: ACPConfig = field(default_factory=ACPConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
+    harness: HarnessConfig = field(default_factory=HarnessConfig)
 
     @property
     def project_root(self) -> Path:
@@ -400,6 +422,18 @@ def _coerce(data: dict) -> Config:
         ),
     )
 
+    harness_raw = data.get("harness", {}) or {}
+    harness = HarnessConfig(
+        tool_menu=str(harness_raw.get("tool_menu", HarnessConfig.tool_menu)),
+        write_gate_enabled=bool(
+            harness_raw.get("write_gate_enabled", HarnessConfig.write_gate_enabled)
+        ),
+        features=tuple(
+            (str(k), bool(v))
+            for k, v in (harness_raw.get("features") or {}).items()
+        ),
+    )
+
     return Config(
         llm=llm,
         timeouts=timeouts,
@@ -413,6 +447,7 @@ def _coerce(data: dict) -> Config:
         vision=vision,
         acp=acp,
         memory=memory,
+        harness=harness,
     )
 
 
@@ -432,6 +467,7 @@ def _coerce_acp(raw: dict) -> ACPConfig:
     """Build :class:`ACPConfig` from the raw ``acp:`` YAML mapping."""
     raw = raw or {}
     return ACPConfig(
+        enabled=bool(raw.get("enabled", ACPConfig.enabled)),
         acpx_path=str(raw.get("acpx_path", ACPConfig.acpx_path)),
         session_prefix=str(raw.get("session_prefix", ACPConfig.session_prefix)),
         timeout_simple=int(raw.get("timeout_simple", ACPConfig.timeout_simple)),

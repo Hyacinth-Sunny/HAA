@@ -1119,9 +1119,11 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/about", response_class=HTMLResponse)
     def page_about(request: Request):
-        """说明书页：内联速览 + 渲染仓库根的 HAA项目说明书.md（单一来源，v1.0.5）。"""
+        """说明书页：内联速览 + 渲染 HAA项目说明书.md（单一来源；优先仓库根，1016 重组后回退 MDs/）。"""
         manual_md = ""
         manual_path = config.project_root / "HAA项目说明书.md"
+        if not manual_path.exists():
+            manual_path = config.project_root / "MDs" / "HAA项目说明书.md"
         if manual_path.exists():
             try:
                 manual_md = manual_path.read_text(encoding="utf-8")

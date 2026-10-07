@@ -43,6 +43,28 @@ def _create(client, **over):
 
 # --- route reachability ------------------------------------------------------
 
+def test_about_renders_manual_from_mds_fallback(tmp_path, monkeypatch):
+    """锚定（1016 重组回归）：说明书只存在于 MDs/ 归档位时 /about 仍渲染其内容。
+
+    回归背景：2026-10-06 重组把 HAA项目说明书.md 移入 MDs/，/about 只查仓库根，
+    说明书区静默空白（e2e_check 第②层 /about 项变红）。修复=根目录优先、MDs/ 回退。
+    注：模板目录在 create_app 时按真实根解析，说明书路径在请求时读 config.project_root，
+    故先建 app 再把 project_root 属性指到临时目录（只影响说明书查找）。
+    """
+    (tmp_path / "MDs").mkdir()
+    (tmp_path / "MDs" / "HAA项目说明书.md").write_text(
+        "# 说明书锚定\n\n**论文前半部标准（v9.9.9）**：锚定测试标记。", encoding="utf-8")
+    from haa import config as haa_config
+    app = create_app(_config(tmp_path))  # 模板/静态目录按真实仓库根解析
+    monkeypatch.setattr(haa_config.Config, "project_root",
+                        property(lambda self: tmp_path))
+    with TestClient(app) as c:
+        r = c.get("/about")
+    assert r.status_code == 200
+    assert "论文前半部标准" in r.text and "锚定测试标记" in r.text
+
+
+
 def test_dashboard_renders(client):
     r = client.get("/")
     assert r.status_code == 200

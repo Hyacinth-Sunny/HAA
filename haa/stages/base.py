@@ -432,6 +432,33 @@ class BaseStage:
         except Exception:  # noqa: BLE001 — 记忆层绝不影响主管线
             return ""
 
+    def _campaign_tomb_block(self, campaign, context) -> str:
+        """战役内墓穴死路清单（大修批次2，第二章 §8 墓穴即时版）。
+
+        数据源优先级：进程内 ``context.extra["kills"]``（权威、随 checkpoint
+        存活）→ ``artifacts/kills.json`` 文件回退（跨进程 resume 时 extra
+        重建前仍拿得到全量死路）。空 → ""（SEEK 第一轮无注入——"第二轮起"
+        语义由此天然成立）。逻辑归属楼层 50-99 记忆注入区；M0 楼层化挂账
+        清偿前走 prompt 后缀通道。任何失败返回 ""（记忆层不破主管线）。
+        """
+        try:
+            kills = list((getattr(context, "extra", None) or {}).get("kills") or [])
+            if not kills and campaign is not None and self.config is not None:
+                from haa.memory import load_campaign_kills
+
+                campaigns_dir = self.config.storage.resolved_campaigns_dir(
+                    self.config.project_root
+                )
+                kills = load_campaign_kills(campaigns_dir, campaign.id)
+            if not kills:
+                return ""
+            from haa.memory import campaign_tomb_block
+
+            block = campaign_tomb_block(kills)
+            return ("\n\n" + block) if block else ""
+        except Exception:  # noqa: BLE001 — 记忆层绝不影响主管线
+            return ""
+
     @staticmethod
     def _agent_meta(result: Any) -> dict:
         """Extract observability metadata from an ``AgentLoopResult``.

@@ -690,19 +690,66 @@ class Pipeline:
         otherwise the kill evidence (kill_method / evidence / rationale) is lost
         and the ARV-stage audit cannot review whether the kill was justified
         (错杀 vs 漏杀). ``extra`` survives the per-candidate reset.
+
+        大修批次2（第二章 §8 墓穴即时版）：kill 记录在旧字段（stage/slug/
+        title/verdict/reason）之上扩展 core_claim / kill_evidence /
+        structure_fingerprint——campaign 内 SEEK 第二轮起的死路清单注入与
+        campaign 结束的持久库转写都以本记录为数据源。
         """
         kills = context.extra.setdefault("kills", [])
         cand = context.candidate
         verdict = {
             k: v for k, v in result.data.items() if k not in ("trace", "candidates")
         }
-        kills.append({
+        record = {
             "stage": stage_name,
             "slug": cand.slug if cand is not None else None,
             "title": cand.title if cand is not None else None,
             "verdict": verdict,
             "reason": str(result.data.get("reason", "")),
-        })
+        }
+        # --- 批次2 扩展字段（旧读方按 key 取，缺省无害） ---
+        core_claim = ""
+        if cand is not None:
+            core_claim = str(getattr(cand, "positive_claim", "") or "").strip()
+            if not core_claim:
+                core_claim = str(getattr(cand, "rationale", "") or "").strip()[:500]
+        if core_claim:
+            record["core_claim"] = core_claim
+        evidence = self._extract_kill_evidence(result.data)
+        if evidence:
+            record["kill_evidence"] = evidence
+        fingerprint = result.data.get("structure_fingerprint")
+        if isinstance(fingerprint, dict) and fingerprint:
+            # 第三章 §6 的结构指纹（NOVELTY 入口生成后自然填充；当前管线
+            # 尚无生产者，字段先行占位）
+            record["structure_fingerprint"] = fingerprint
+        kills.append(record)
+
+    @staticmethod
+    def _extract_kill_evidence(result_data: dict) -> str:
+        """Best-effort 抽取本次杀候选的硬证据（SCREEN 反例/NOVELTY 撞车/
+        EXP blockers/VERIFY findings）。确定性抽取，不做模型调用。"""
+        for key in ("kill_evidence", "evidence", "counterexample"):
+            v = result_data.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()[:2000]
+            if isinstance(v, list) and v:
+                return "; ".join(str(x) for x in v)[:2000]
+        blockers = result_data.get("blockers")
+        if isinstance(blockers, list):
+            parts = [str(b.get("evidence")) for b in blockers
+                     if isinstance(b, dict) and b.get("evidence")]
+            if parts:
+                return "; ".join(parts)[:2000]
+        findings = result_data.get("findings")
+        if isinstance(findings, list):
+            parts = [str(f.get("evidence") or f.get("detail") or "")
+                     for f in findings if isinstance(f, dict)]
+            parts = [p for p in parts if p]
+            if parts:
+                return "; ".join(parts)[:2000]
+        return ""
 
     def _advance_or_retire(self, campaign, context, reason) -> StageName | None:
         """Archive the current candidate and advance to the next, or retire."""

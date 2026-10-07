@@ -36,16 +36,30 @@ class SeekStage(BaseStage):
             if self.config is not None
             else 5
         )
-        prompt = (
-            render_prompt(
-                "seek",
-                brief=brief,
-                knowledge_basenames=_knowledge_basenames(brief),
-                candidate_count=n,
+        anchor, anchor_idea_id, anchored = self._anchor(context)
+        if anchored:
+            # 行为矩阵（第三章 §4.2）：SEEK 降级为锚点细化——单候选、不发散
+            prompt = (
+                render_prompt(
+                    "seek_anchor",
+                    brief=brief,
+                    anchor=anchor,
+                    anchor_idea_id=anchor_idea_id,
+                )
+                + self._brief_block(brief)
+                + self._anchor_guard_clause()
             )
-            + self._memory_brief_suffix(brief)
-            + self._campaign_tomb_block(campaign, context)  # 批次2：战役内死路清单（第二轮起非空）
-        )
+        else:
+            prompt = (
+                render_prompt(
+                    "seek",
+                    brief=brief,
+                    knowledge_basenames=_knowledge_basenames(brief),
+                    candidate_count=n,
+                )
+                + self._memory_brief_suffix(brief)
+                + self._campaign_tomb_block(campaign, context)  # 批次2：战役内死路清单（第二轮起非空）
+            )
         result = self._run_agent(
             prompt,
             stage_name=self.name,

@@ -23,9 +23,16 @@ class NoveltyStage(BaseStage):
         cand = context.candidate
         if cand is None:
             return StageResult.abort_campaign(reason="NOVELTY: no active candidate")
-        prompt = render_prompt(
-            "novelty", brief=context.brief, candidate=cand
-        ) + self._brief_block(context.brief)
+        anchor, _aid, anchored = self._anchor(context)
+        if anchored:
+            # 行为矩阵：NOVELTY → 先例碰撞检查（迁移不算撞车规则在模板内）
+            prompt = render_prompt(
+                "novelty_anchor", brief=context.brief, candidate=cand, anchor=anchor
+            ) + self._brief_block(context.brief) + self._anchor_guard_clause()
+        else:
+            prompt = render_prompt(
+                "novelty", brief=context.brief, candidate=cand
+            ) + self._brief_block(context.brief)
         if (
             self.config is not None
             and self.config.memory.enabled
@@ -46,6 +53,8 @@ class NoveltyStage(BaseStage):
             "rationale": str(data.get("rationale", "")),
             "closest_prior_work": str(data.get("closest_prior_work", "")),
             "search_queries_used": data.get("search_queries_used", []),
+            "precedents": data.get("precedents", []),
+            "anchor_diff": data.get("anchor_diff"),
             "trace": result.messages,
         }
         # Record dedup findings on the candidate so later stages see them.

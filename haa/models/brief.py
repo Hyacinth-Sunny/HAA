@@ -30,6 +30,35 @@ class Track(str, Enum):
     SYSTEMS = "systems"
 
 
+
+
+class HypothesisAnchor(BaseModel):
+    """锚定模式入口（大修第三章 §3）：存在即锚定，缺失即开放模式。
+
+    锚点是待检验的对象，不是被复制的目标——防脑裂三件套（偏差说明/
+    保真检查器/异议上报）围绕它工作。提交时对规范化序列化计算
+    SHA-256 前 8 位作为 idea-ID（锚点从此不可变，后续所有环节引用）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    core_claim: str = Field(..., min_length=1,
+                            description="核心主张（一句话）")
+    expected_mechanism: str = Field(..., min_length=1,
+                                    description="预期机制：为什么这个主张成立")
+    success_criteria: str = Field(..., min_length=1,
+                                  description="成功判据：什么现象出现算验证成功")
+    confidence: str = Field(..., description="high | medium | low 置信度声明")
+
+    @field_validator("confidence")
+    @classmethod
+    def _confidence(cls, v: str) -> str:
+        v = v.strip().lower()
+        if v not in ("high", "medium", "low"):
+            raise ValueError("confidence must be high|medium|low")
+        return v
+
+
 class Brief(BaseModel):
     """A research brief written by a human.
 
@@ -62,6 +91,10 @@ class Brief(BaseModel):
         default=None,
         description="跳转到指定阶段（旁路模式）。如 'exp_spec' 跳过 SEEK→…→GRADE 直接进 EXP_SPEC。",
     )
+    hypothesis_anchor: HypothesisAnchor | None = Field(
+        default=None,
+        description="锚定模式入口（第三章 §3）：存在即锚定、缺失即开放模式。",
+    )
     knowledge_files: list[str] = Field(
         default_factory=list,
         description=(
@@ -70,6 +103,17 @@ class Brief(BaseModel):
             "campaign 目录）。如 16 个研究包笔记。"
         ),
     )
+
+    @property
+    def anchor_idea_id(self) -> str | None:
+        """锚点规范化哈希的 idea-ID（a+sha256 前 8 位；无锚点为 None）。"""
+        if self.hypothesis_anchor is None:
+            return None
+        from haa.memory_bank import idea_id_from_anchor
+
+        a = self.hypothesis_anchor
+        return idea_id_from_anchor(a.core_claim, a.expected_mechanism,
+                                   a.success_criteria)
 
     @field_validator("constraints", "exclusions", "knowledge_files")
     @classmethod

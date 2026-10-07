@@ -356,6 +356,36 @@ class Pipeline:
                 self._persist(campaign, context, "HUMAN_REVIEW:paused")
                 return campaign
 
+            # 大修批次4（P1-a）：锚定模式三件套逐环节检查——偏差说明解析、
+            # 保真评分（报警阈值 7/10）、异议报告捕获。challenge 非空 →
+            # 管线暂停交用户裁决（复用 paused 通道；v1 呈现走事件日志与
+            # checkpoint 的 extra，Web 专属视图在前端批次补）。
+            anchor = getattr(getattr(context, "brief", None), "hypothesis_anchor", None)
+            if anchor is not None and (
+                self.config is None
+                or self.config.harness.feature("anchored_mode")
+            ):
+                from haa.anchor_guard import check_stage_output
+
+                guard = check_stage_output(anchor, result.data or {})
+                context.extra.setdefault("anchor_guard", {})[stage.value] = {
+                    k: v for k, v in guard.items()}
+                if guard["fidelity"] and guard["fidelity"]["alarm"]:
+                    logger.warning(
+                        "anchor fidelity alarm at %s: %s/10 — output may have drifted "
+                        "from the anchor", stage.value, guard["fidelity"]["total"],
+                    )
+                if guard["challenge"]:
+                    logger.warning(
+                        "anchor challenge raised at %s: %s — pausing for user "
+                        "arbitration", stage.value, guard["challenge"]["challenge_type"],
+                    )
+                    context.extra["pending_challenge"] = {
+                        "stage": stage.value, **guard["challenge"]}
+                    campaign.status = CampaignStatus.AWAITING_HUMAN_REVIEW
+                    self._persist(campaign, context, "ANCHOR_CHALLENGE:paused")
+                    return campaign
+
             # Observability hook (B3): surface truncation + per-stage measures.
             self._observe(stage_obj, stage.value, campaign)
 

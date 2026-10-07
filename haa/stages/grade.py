@@ -34,13 +34,20 @@ class GradeStage(BaseStage):
         cand = context.candidate
         if cand is None:
             return StageResult.abort_campaign(reason="GRADE: no active candidate")
-        prompt = render_prompt(
-            "grade",
-            candidate=cand,
-            design=context.design,
-            verify_findings=context.verify_findings,
-            verify_passed=context.verify_passed,
-        ) + self._brief_block(context.brief)
+        anchor, _aid, anchored = self._anchor(context)
+        if anchored:
+            # 行为矩阵：GRADE → 评证据强度（证明与实验支撑是否扎实）
+            prompt = render_prompt(
+                "grade_anchor", candidate=cand, anchor=anchor, brief=context.brief
+            ) + self._brief_block(context.brief) + self._anchor_guard_clause()
+        else:
+            prompt = render_prompt(
+                "grade",
+                candidate=cand,
+                design=context.design,
+                verify_findings=context.verify_findings,
+                verify_passed=context.verify_passed,
+            ) + self._brief_block(context.brief)
         result = self._run_agent(
             prompt,
             stage_name=self.name,
@@ -56,6 +63,7 @@ class GradeStage(BaseStage):
         out = {
             "grade": verdict.value,
             "rationale": str(data.get("rationale", "")),
+            "anchor_diff": data.get("anchor_diff"),
             "trace": result.messages,
         }
         if verdict in (GradeVerdict.TRIVIAL, GradeVerdict.LOOPHOLE):

@@ -816,6 +816,18 @@ def create_app(config: Config | None = None) -> FastAPI:
     def stats() -> dict[str, Any]:
         return store.stats()
 
+    @app.post("/api/brief-preflight")
+    async def api_brief_preflight(payload: dict):
+        """简报质量预检（软门，大修第三章 §3.4）：body {"md": "..."} → 报告。"""
+        from fastapi.responses import JSONResponse
+
+        from haa.brief_preflight import preflight
+
+        md = str(payload.get("md") or "")
+        if not md.strip():
+            return JSONResponse({"error": "md is required"}, status_code=400)
+        return preflight(md)
+
     @app.get("/api/tool-stats")
     def tool_stats(campaign_id: str | None = None) -> dict[str, Any]:
         """工具调用统计（v1.0.6-rev2）：per-tool 调用数/失败率/耗时/阶段分布。

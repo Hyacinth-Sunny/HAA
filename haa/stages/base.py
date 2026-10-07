@@ -442,6 +442,23 @@ class BaseStage:
         except Exception:  # noqa: BLE001 — 记忆层绝不影响主管线
             return ""
 
+    def _anchor(self, context):
+        """锚定模式三元组 (anchor, idea_id, enabled)：feature 开关×简报锚点。
+
+        开关默认关（Ch6 特性开关纪律，default.yaml features.anchored_mode）；
+        config 为 None（纯单测）时锚点存在即启用。"""
+        anchor = getattr(getattr(context, "brief", None), "hypothesis_anchor", None)
+        if anchor is None:
+            return None, None, False
+        enabled = self.config is None or self.config.harness.feature("anchored_mode")
+        return (anchor if enabled else None), \
+            getattr(context.brief, "anchor_idea_id", None), anchor is not None and enabled
+
+    def _anchor_guard_clause(self) -> str:
+        from haa.anchor_guard import ANCHOR_GUARD_CLAUSE
+
+        return ANCHOR_GUARD_CLAUSE
+
     def _campaign_tomb_block(self, campaign, context) -> str:
         """战役内墓穴死路清单（大修批次2，第二章 §8 墓穴即时版）。
 

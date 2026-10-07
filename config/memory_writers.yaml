@@ -1,0 +1,52 @@
+# 记忆库写权限矩阵（大修计划书第二章 §6.3）
+#
+# 语义：写入者 → 允许写的实体与字段。矩阵外一律拒绝，不提供绕过接口
+# （调试走 lint 修复脚本）。字段口径与 haa/memory_bank.py 的实体 schema
+# 逐字一致（消费方按此写解析器）。
+#
+# 特殊写者：
+#   memory_write_tool —— 第一章第三批 memory_write 工具的身份（M-d 接入），
+#     同样经本矩阵校验，不享有豁免。
+#   promotion        —— campaign 结束晋升流程（第二章 §5 时机 1/3）。
+
+writers:
+  SEEK:
+    idea:
+      create: true
+      fields: [idea_id, title, core_claim, structure_fingerprint, source_campaign,
+               status, problem_class, domain, related, date]
+    open_question:
+      create: true
+      fields: [oq_id, question, origin, status, date]
+
+  SCREEN: {idea: {status_to: [killed], fields: [kill_reason, kill_evidence]}}
+  VERIFY: {idea: {status_to: [killed], fields: [kill_reason, kill_evidence]}}
+  PILOT:  {idea: {status_to: [killed], fields: [kill_reason, kill_evidence]}}
+
+  GRADE:
+    verdict: {create: true, fields: [verdict_id, subject, judge, conclusion, evidence, date]}
+    idea: {status_to: [superseded, graduated], fields: []}
+
+  REVIEW:
+    verdict: {create: true, fields: [verdict_id, subject, judge, conclusion, evidence, date]}
+    idea: {status_to: [superseded, graduated], fields: []}
+
+  NOVELTY:
+    open_question: {create: true, fields: [oq_id, question, origin, status, date]}
+    idea: {status_to: [killed], fields: [kill_reason, kill_evidence]}
+
+  P2:  # 实验执行（CODE_GEN/EXECUTE/ANALYZE 合称，第四章）
+    experiment: {create: true, update: true, fields: [exp_id, idea_id, tier, verdict,
+                                                      metrics, env, solve_sh, date]}
+
+  WRITE:
+    domain_concept: {create: true, update: true,
+                     fields: [concept_id, name, math_formulation, code_refs,
+                              dependencies, status, first_seen_campaign, reused_in, date]}
+
+  promotion:  # 晋升流程：批量转写 kills/candidates（idea）与判决（experiment/verdict）
+    idea: {create: true, update: true, fields: ["*"]}
+    experiment: {create: true, update: true, fields: ["*"]}
+    verdict: {create: true, update: true, fields: ["*"]}
+
+  memory_write_tool: {}  # 空映射=无直写权（M-d 时按需逐实体开列）

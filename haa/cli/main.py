@@ -318,6 +318,80 @@ app.add_typer(project_app, name="project")
 
 
 # --------------------------------------------------------------------------- #
+#  Memory sub-app (大修 M-b：记忆库实体层)
+# --------------------------------------------------------------------------- #
+
+memory_app = typer.Typer(help="Memory bank (entities / lint / derived index).")
+
+
+@memory_app.command(name="rebuild")
+def memory_rebuild(
+    root: str = typer.Option("data/memory", help="Memory bank root dir."),
+):
+    """Rebuild the derived SQLite index from the Markdown master store."""
+    from haa.config import _PROJECT_ROOT
+    from haa.memory_bank import MemoryBank
+
+    bank = MemoryBank(_PROJECT_ROOT / root)
+    n = bank.rebuild_index()
+    console.print(f"[green]✓[/green] Rebuilt index: {n} entities → {bank.index_path()}")
+
+
+@memory_app.command(name="lint")
+def memory_lint(
+    root: str = typer.Option("data/memory", help="Memory bank root dir."),
+):
+    """Lint the memory bank (fields / edge pairs / transitions / ids)."""
+    from haa.config import _PROJECT_ROOT
+    from haa.memory_bank import MemoryBank
+
+    bank = MemoryBank(_PROJECT_ROOT / root)
+    problems = bank.lint()
+    if problems:
+        for p in problems:
+            console.print(f"[red]✗[/red] {p}")
+        raise typer.Exit(code=1)
+    console.print("[green]✓[/green] Memory bank lint clean.")
+
+
+app.add_typer(memory_app, name="memory")
+
+
+# --------------------------------------------------------------------------- #
+#  Brief preflight sub-app (大修批次4/P1-a：简报质量预检，软门)
+# --------------------------------------------------------------------------- #
+
+brief_app = typer.Typer(help="Brief quality preflight (soft gate, non-blocking).")
+
+
+@brief_app.command(name="preflight")
+def brief_preflight_cmd(
+    brief_file: str = typer.Argument(..., help="Path to the brief markdown."),
+):
+    """Run the soft preflight (structure / vagueness / contradictions)."""
+    from pathlib import Path
+
+    from haa.brief_preflight import preflight
+
+    md = Path(brief_file).read_text(encoding="utf-8")
+    report = preflight(md)
+    if report["verdict"] == "clean":
+        console.print("[green]✓[/green] Preflight clean.")
+    else:
+        console.print(f"[yellow]！[/yellow] Preflight: {report['verdict']} "
+                      f"(high={report['counts']['high']} "
+                      f"medium={report['counts']['medium']} "
+                      f"info={report['counts']['info']})")
+        for pr in report["problems"]:
+            console.print(f"  [{ 'red' if pr['severity']=='high' else 'yellow' }]•[/] "
+                          f"[{pr['kind']}] {pr['message']}")
+            console.print(f"      ↳ {pr['suggestion']}")
+
+
+app.add_typer(brief_app, name="brief")
+
+
+# --------------------------------------------------------------------------- #
 #  Entry point
 # --------------------------------------------------------------------------- #
 

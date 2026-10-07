@@ -44,6 +44,7 @@ class SeekStage(BaseStage):
                 candidate_count=n,
             )
             + self._memory_brief_suffix(brief)
+            + self._campaign_tomb_block(campaign, context)  # 批次2：战役内死路清单（第二轮起非空）
         )
         result = self._run_agent(
             prompt,

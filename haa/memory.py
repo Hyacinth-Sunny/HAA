@@ -58,6 +58,10 @@ class MemoryIdea(BaseModel):
     origin_project: str = ""
     origin_brief_title: str = ""
     domain_keywords: list[str] = Field(default_factory=list)
+    core_claim: str = Field(
+        default="",
+        description="核心主张（大修批次2：campaign 转写时自 kill 记录携带，供跨 campaign 死路匹配升级到语义位）",
+    )
     failure_reason: str = ""
     kill_stage: str = ""
     kill_evidence: str = ""
@@ -93,6 +97,8 @@ class MemoryIdea(BaseModel):
 
     def to_page(self) -> str:
         body = [self.frontmatter(), "", f"# {self.title}", ""]
+        if self.core_claim:
+            body += ["**核心主张**：" + self.core_claim, ""]
         if self.failure_reason:
             body += [f"**死因（{self.kill_stage or '?'}）**：{self.failure_reason}", ""]
         if self.kill_evidence:
@@ -375,6 +381,7 @@ def idea_pages_from_campaign(
                 origin_project=origin_project,
                 origin_brief_title=origin_brief_title[:200],
                 domain_keywords=_keywords_from_title(str(c.get("title") or "")),
+                core_claim=str((kill or {}).get("core_claim") or c.get("positive_claim") or "")[:500],
                 failure_reason=failure_reason,
                 kill_stage=kill_stage,
                 kill_evidence=kill_evidence,
@@ -388,3 +395,65 @@ def idea_pages_from_campaign(
 def _keywords_from_title(title: str) -> list[str]:
     words = [w for w in re.split(r"[^A-Za-z0-9一-鿿]+", title) if len(w) > 2]
     return [w.lower() for w in words[:8]]
+
+
+# --------------------------------------------------------------------------- #
+#  大修批次2（第二章 §8）：campaign 内即时墓穴
+# --------------------------------------------------------------------------- #
+
+def load_campaign_kills(campaigns_dir, campaign_id: str) -> list[dict[str, Any]]:
+    """读 campaigns/<cid>/artifacts/kills.json（容错：缺文件/坏 JSON → 空表）。
+
+    SEEK 注入的文件侧数据源（进程内 context.extra 丢失时——如跨进程
+    resume——仍能拿到全量死路）。
+    """
+    try:
+        p = Path(campaigns_dir) / campaign_id / "artifacts" / "kills.json"
+        if not p.exists():
+            return []
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError) as exc:
+        logger.warning("load_campaign_kills(%s) failed: %s", campaign_id, exc)
+        return []
+
+
+def campaign_tomb_block(kills: list[dict[str, Any]], max_chars: int = 3000) -> str:
+    """把 campaign 内 kill 记录渲染为可注入 SEEK prompt 的死路清单。
+
+    大修计划书第二章 §8（墓穴即时版）＋第三章 §5.3（SEEK 注入）。注入上限
+    1K token 的硬顶纪律（第二章 §11：配置可下调不可上调）——按 3000 字符
+    保守执行；超限保留在前的记录并标注丢弃数。空表返回 ""。
+    逻辑归属楼层 50-99（记忆注入区）；M0 楼层化挂账清偿前以 prompt 后缀
+    形式注入（与 _memory_brief_suffix 同通道）。
+    """
+    entries = [k for k in (kills or []) if isinstance(k, dict)]
+    if not entries:
+        return ""
+    lines: list[str] = [
+        "## ⚰ 战役内墓穴（本战役此前轮次已死候选——新候选严禁换皮重提同骨架思路；死因供规避）",
+    ]
+    dropped = 0
+    used = len(lines[0])
+    for k in entries:
+        stage = str(k.get("stage") or "?")
+        title = str(k.get("title") or k.get("slug") or "?")
+        reason = str(
+            k.get("kill_evidence") or k.get("reason")
+            or (k.get("verdict") or {}).get("reason") or ""
+        )[:200]
+        claim = str(k.get("core_claim") or "")[:160]
+        parts = [f"- [{stage}] {title}"]
+        if claim:
+            parts.append("主张：" + claim)
+        if reason:
+            parts.append("死因：" + reason)
+        line = "｜".join(parts)
+        if used + len(line) + 1 > max_chars:
+            dropped += 1
+            continue
+        lines.append(line)
+        used += len(line) + 1
+    if dropped:
+        lines.append(f"（另有 {dropped} 条死路记录因注入上限省略）")
+    return "\n".join(lines)

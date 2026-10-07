@@ -418,14 +418,17 @@ def load_campaign_kills(campaigns_dir, campaign_id: str) -> list[dict[str, Any]]
         return []
 
 
-def campaign_tomb_block(kills: list[dict[str, Any]], max_chars: int = 3000) -> str:
+def campaign_tomb_block(kills: list[dict[str, Any]], max_chars: int = 1500) -> str:
     """把 campaign 内 kill 记录渲染为可注入 SEEK prompt 的死路清单。
 
     大修计划书第二章 §8（墓穴即时版）＋第三章 §5.3（SEEK 注入）。注入上限
-    1K token 的硬顶纪律（第二章 §11：配置可下调不可上调）——按 3000 字符
-    保守执行；超限保留在前的记录并标注丢弃数。空表返回 ""。
-    逻辑归属楼层 50-99（记忆注入区）；M0 楼层化挂账清偿前以 prompt 后缀
-    形式注入（与 _memory_brief_suffix 同通道）。
+    1K token 的硬顶纪律（第二章 §11：配置可下调不可上调）。字符折算：
+    中文 1 字符 ≈ 0.6-1 token（用户/OpenClaw 2026-10-07 指正：初版
+    3000 字符折算偏乐观，实际可折出 2-3K token 超顶 2-3 倍）——按
+    1500 字符保守起步；**挂账：接入真实分词器实测校准一次后定稿**
+    （未校准前本默认只可下调不可上调）。超限保留在前的记录并标注丢弃数。
+    空表返回 ""。逻辑归属楼层 50-99（记忆注入区）；M0 楼层化挂账清偿前
+    以 prompt 后缀形式注入（与 _memory_brief_suffix 同通道）。
     """
     entries = [k for k in (kills or []) if isinstance(k, dict)]
     if not entries:

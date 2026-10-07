@@ -131,3 +131,11 @@ write_file:
   - SCREEN
   - WRITE
 
+job_output:
+  - SCREEN
+  - VERIFY
+
+job_kill:
+  - SCREEN
+  - VERIFY
+

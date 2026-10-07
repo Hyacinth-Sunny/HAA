@@ -109,64 +109,115 @@ class PathWhitelist:
 
 @dataclass
 class ReadTracker:
-    """先读后写状态（写闸门的数据源）：记录本阶段循环内读过的文件与 mtime。
+    """先读后写状态（写闸门的数据源）：记录本阶段循环内观察过的文件与 mtime。
 
     状态生命周期 = 一个 AgentLoop 实例（= 一次 stage 会话），换工具/
     换候选即换循环——与"本阶段循环内已读过"的语义一致。
+    观察语义（DSH fs-observation-policy）：读记录观察；写/改成功后刷新观察
+    （写后即读）；读到"文件缺失"也记录（负观察——授权创建、永不授权编辑）。
     """
 
-    reads: dict[str, float] = field(default_factory=dict)  # resolved path → mtime
+    reads: dict[str, float] = field(default_factory=dict)  # resolved path → mtime（-1=观察到缺失）
 
     def record_read(self, path: str) -> None:
         try:
             rp = str(Path(path).expanduser().resolve())
             self.reads[rp] = os.path.getmtime(rp)
         except OSError:
-            self.reads[str(path)] = -1.0
+            self.reads[str(Path(path).expanduser().resolve())] = -1.0
+
+    def observed(self, path: str) -> bool:
+        return str(Path(path).expanduser().resolve()) in self.reads
 
     def may_write(self, path: str) -> tuple[bool, str]:
+        """写许可：已观察 → mtime CAS；未观察且文件不存在 → 创建语义放行；
+        未观察且文件已存在 → 拒绝（createIfAbsent 语义，DSH §write-intent）。"""
         rp = str(Path(path).expanduser().resolve())
         if rp not in self.reads:
-            return False, f"write gate: {path} was never read in this stage loop"
+            if os.path.exists(rp):
+                return False, (
+                    f"write gate: {path} exists but was never read in this stage loop "
+                    "(FS_NOT_OBSERVED — read the file first, then retry)"
+                )
+            return True, ""  # 未观察 + 不存在 = 盲建
         mtime = self.reads[rp]
         if mtime <= 0:
+            # 观察到缺失（负观察）：创建放行；文件若已被他人建出则拒
+            if os.path.exists(rp):
+                return False, (
+                    f"write gate: {path} was observed absent but now exists "
+                    "(FS_STALE_VERSION — re-read, then retry)"
+                )
             return True, ""
         try:
             if os.path.getmtime(rp) != mtime:
-                return False, f"write gate: {path} changed on disk since last read (mtime)"
+                return False, (
+                    f"write gate: {path} changed on disk since last read "
+                    "(FS_STALE_VERSION — re-read the file, then retry)"
+                )
         except OSError:
-            return True, ""  # 文件已被删等场景交给 handler 报错
+            return True, ""  # 观察过但现已删除：交 handler 报 not found
         return True, ""
+
+    def may_edit(self, path: str) -> tuple[bool, str]:
+        """编辑许可：必须有正观察（读过存在的文件）且 mtime 未变。
+        负观察（读到缺失）永不授权编辑（FS_NOT_FOUND）。"""
+        rp = str(Path(path).expanduser().resolve())
+        if rp not in self.reads:
+            return False, (
+                f"write gate: {path} was never read in this stage loop "
+                "(FS_NOT_OBSERVED — read the file first, then retry)"
+            )
+        if self.reads[rp] <= 0:
+            return False, f"write gate: {path} was observed absent (FS_NOT_FOUND)"
+        return self.may_write(path)
 
 
 @dataclass
 class ReadBeforeWriteGate:
-    """第 4 步写闸门（第一章 §5.2 的强制机制，代码强制非提示词劝说）。
+    """写闸门（第一章 §5.2 的强制机制，代码强制非提示词劝说）。
 
-    M0 默认关（``harness.write_gate.enabled: false``——Ch6 特性开关纪律：
-    出问题关开关即回退）；M1 随 edit_file/write_file 重写后默认开。
+    M1 起默认开（M0 期间特性开关默认关完成过渡）。时序（对计划书 §3.4
+    第 2/4 步的裁定）：**拒绝半步前移到事前检查链末位**——"修改文件前
+    必须先读过"字面语义要求在执行体之前拒绝；第 4 步保留**记录半步**
+    （读观察登记、写后观察刷新），六步名目不变。
     """
 
     enabled: bool = False
     tracker: ReadTracker = field(default_factory=ReadTracker)
     write_arg_names: tuple[str, ...] = ("path", "file", "target")
+    edit_tools: frozenset[str] = frozenset({"edit_file"})
 
-    def enforce(self, spec: ToolSpec, args: dict[str, Any], ctx: ToolCallContext) -> None:
-        # 读类工具先登记（供后续写校验）——读本身不受闸门约束
-        if spec.guardrails.get("reads_paths") is True:
-            raw = self._first_path(args)
-            if raw:
-                self.tracker.record_read(raw)
-        if spec.guardrails.get("writes_paths") is not True:
-            return
+    def precheck(self, spec: ToolSpec, args: dict[str, Any], ctx: ToolCallContext) -> None:
+        """事前拒绝（挂入检查链第 2 步末位）。"""
         if not self.enabled:
+            return
+        if spec.guardrails.get("writes_paths") is not True:
             return
         raw = self._first_path(args)
         if not raw:
             return
-        ok, why = self.tracker.may_write(raw)
+        if spec.name in self.edit_tools:
+            ok, why = self.tracker.may_edit(raw)
+        else:
+            ok, why = self.tracker.may_write(raw)
         if not ok:
             raise ToolError(why)
+
+    def post_execute(
+        self, spec: ToolSpec, args: dict[str, Any], ctx: ToolCallContext, ok: bool
+    ) -> None:
+        """执行后的观察记录：读工具登记观察（成功与否——读到缺失也是负观察）；
+        写/改工具成功后刷新观察（写后即读，下一次改无需重读）。"""
+        if spec.guardrails.get("reads_paths") is True:
+            raw = self._first_path(args)
+            if raw:
+                self.tracker.record_read(raw)
+            return
+        if ok and spec.guardrails.get("writes_paths") is True:
+            raw = self._first_path(args)
+            if raw:
+                self.tracker.record_read(raw)
 
     def _first_path(self, args: dict[str, Any]) -> str | None:
         for key in self.write_arg_names:
@@ -211,10 +262,12 @@ class Checklist:
         call_seq = self.session_log.tool_call(
             tool=spec.name, arguments=args, stage=ctx.stage_name, campaign_id=ctx.campaign_id
         )
-        # 2. 事前检查链：拒绝即第 6 步记失败账并抛出（结论不可翻案）
+        # 2. 事前检查链：拒绝即第 6 步记失败账并抛出（结论不可翻案）。
+        #    写闸门的拒绝半步挂链末位（见 ReadBeforeWriteGate 时序裁定）。
         try:
             for check in self.prechecks:
                 check.check(spec, args, ctx)
+            self.write_gate.precheck(spec, args, ctx)
         except ToolError as exc:
             self._freeze(
                 spec, ctx, call_seq, ok=False, error=str(exc), result="", t0=t0
@@ -231,13 +284,11 @@ class Checklist:
                 result = ToolResult(content="" if out is None else str(out))
         except Exception as exc:  # noqa: BLE001 — 不静默死亡：错误文本喂回模型
             err = f"{type(exc).__name__}: {exc}"
-        # 4. 写闸门（仅写/改类工具；M0 默认关）
-        if err is None:
-            try:
-                self.write_gate.enforce(spec, args, ctx)
-            except ToolError as exc:
-                err = str(exc)
-                result = ToolResult()
+        # 4. 写闸门的记录半步：读观察登记 / 写后观察刷新
+        try:
+            self.write_gate.post_execute(spec, args, ctx, ok=err is None)
+        except Exception:  # noqa: BLE001 — 记录失败不炸执行结果
+            logger.exception("write-gate post_execute failed for %s", spec.name)
         # 5. 结果处理
         if err is None:
             result = self.processor.process(result, spec)

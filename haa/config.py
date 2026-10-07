@@ -297,7 +297,8 @@ class HarnessConfig:
     """
 
     tool_menu: str = "config/tool_menu.yaml"  # 声明式工具菜单（缺文件回退代码声明）
-    write_gate_enabled: bool = False  # 先读后写闸门（M1 随五个底层工具强化后默认开）
+    write_gate_enabled: bool = True  # 先读后写闸门（M1 强化完成，默认开；可关回退）
+    ssh_servers: dict = field(default_factory=dict)  # SSH 服务器档案（凭证只进配置）
     features: tuple[tuple[str, bool], ...] = ()  # 特性开关（有序对，读代码侧转 dict）
 
     def feature(self, name: str, default: bool = False) -> bool:
@@ -428,6 +429,10 @@ def _coerce(data: dict) -> Config:
         write_gate_enabled=bool(
             harness_raw.get("write_gate_enabled", HarnessConfig.write_gate_enabled)
         ),
+        ssh_servers={
+            str(k): dict(v) for k, v in (harness_raw.get("ssh_servers") or {}).items()
+            if isinstance(v, dict)
+        },
         features=tuple(
             (str(k), bool(v))
             for k, v in (harness_raw.get("features") or {}).items()

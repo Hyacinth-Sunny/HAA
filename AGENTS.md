@@ -30,7 +30,7 @@ $PY data/e2e_check.py        # 端到端体检三层（pytest + Web 路由 + 简
 ```
 
 - CLI：`$PY -m haa.cli.main project create|start|resume-p1|approve|advance ...`
-- 冒烟：`HAA_CONFIG=config/hatm-v2.yaml` + `DEEPSEEK_API_KEY`/`TAVILY_API_KEY`；切 GLM 用 `HAA_CONFIG=config/glm-flash.yaml` + `ZHIPU_API_KEY`（按量付费端点 `paas/v4`，Coding Plan 积分端点 `api/coding/paas/v4/` 勿混用；流式工具调用依赖 `llm.provider_options.tool_stream`，litellm 走 extra_body 通道；reasoning_effort 仅认 low/high/max；价目走 `llm.pricing` 兜底保预算闸）。**key 现场来源（2026-10-07 核实）**：TAVILY=`~/.config/systemd/user/openclaw-gateway.service`；ZHIPU 按量 key=`~/.zcode/v2/config.json` 的 `provider/builtin:bigmodel/options/apiKey`（**注意该账户需有余额**，余额不足报 1113）；DeepSeek key 已不在机器上（转录中已清）
+- 冒烟：`HAA_CONFIG=config/hatm-v2.yaml` + `DEEPSEEK_API_KEY`/`TAVILY_API_KEY`；**GLM 通道（glm-flash.yaml）仅作显式批准下的备选**——智谱按量 API 未开通（2026-10-07 用户澄清），当前所有 GLM API 只能走 Coding Plan 积分额度，与开发用量账目隔离原则冲突，未经用户显式批准不得用于冒烟/开发。**key 现场来源（2026-10-07 核实）**：DEEPSEEK=`data/smoke10_deepseek.env`（gitignored，600）；TAVILY=`~/.config/systemd/user/openclaw-gateway.service`
 - 提示词调试：`$PY -c "from haa.prompts import render_prompt; ..."` 直接渲染查看
 
 ## 检修流程（硬性惯例）

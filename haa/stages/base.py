@@ -250,31 +250,45 @@ class BaseStage:
     # -- Phase 3 helpers (tool-using stages) ---------------------------------
 
     def _make_agent_loop(self) -> Any:
-        """Build an :class:`~haa.llm.agent_loop.AgentLoop` for this stage.
+        """Build the stage's tool-using agent loop.
 
-        Wires a :class:`~haa.llm.tools.ToolRegistry` from ``self.config.tools``
-        with the campaigns dir as the file sandbox, then wraps it with the
-        stage's LLM client. The registry's per-stage allowlist (aligned with
-        ``allowed_tools``) is what actually filters which tools the model sees
-        — :meth:`~haa.llm.agent_loop.AgentLoop.run` passes ``stage_name``=
-        ``self.name`` so the right tools are offered automatically.
+        大修 M0 起：执行引擎切换为新 Harness（``haa/harness/agent_loop.py``）。
+        旧 ``haa/llm/tools.ToolRegistry`` 仍负责构造 16 工具的行为本体（沙箱/
+        黑名单/SSRF 闸全在旧 handler 内原样生效），随后经
+        ``haa.harness.tools_bridge.registry_from_legacy`` **换壳**进新注册表——
+        注册格式换成四件套、执行通道换成统一检查层（先记账→路径白名单→
+        执行→写闸门→结果处理→冻结记账）与事件日志（tool/call、tool/result
+        ＋旧名镜像，tool-stats 不中断）。
 
-        Imports are local so importing :mod:`haa.stages.base` never pulls in the
-        whole tool/LLM stack.
+        对 stage 代码完全透明：循环签名与返回结构同旧 AgentLoop，
+        ``stage_name``=``self.name`` 的菜单过滤照旧（config/tool_menu.yaml
+        声明式覆盖优先）。
         """
-        from haa.llm.agent_loop import AgentLoop
+        from haa.harness.agent_loop import AgentLoop
+        from haa.harness.registry import ToolMenu
+        from haa.harness.tools_bridge import registry_from_legacy
         from haa.llm.tools import ToolRegistry
 
         registry_client = self._sub_agent_client()
         if self.config is not None:
             campaigns_dir = self.config.storage.resolved_campaigns_dir()
-            registry = ToolRegistry(
+            legacy_registry = ToolRegistry(
                 self.config.tools, campaigns_dir=campaigns_dir, client=registry_client,
                 vision_config=self.config.vision,
             )
+            menu = ToolMenu.load(self.config.harness.tool_menu)
+            write_gate = bool(self.config.harness.write_gate_enabled)
         else:
-            registry = ToolRegistry(campaigns_dir="data/campaigns", client=registry_client)
-        loop = AgentLoop(self.llm, registry, event_sink=getattr(self.llm, "event_sink", None))
+            legacy_registry = ToolRegistry(campaigns_dir="data/campaigns", client=registry_client)
+            menu = ToolMenu(None)
+            write_gate = False
+        harness_registry = registry_from_legacy(
+            legacy_registry,
+            event_sink=getattr(self.llm, "event_sink", None),
+            write_gate_enabled=write_gate,
+            menu=menu,
+        )
+        loop = AgentLoop(self.llm, harness_registry, event_sink=getattr(self.llm, "event_sink", None))
         if self.config is not None:
             loop.tool_result_max_chars = self.config.tools.agent_result_max_chars
             loop.read_file_result_max_chars = self.config.tools.read_file_result_max_chars

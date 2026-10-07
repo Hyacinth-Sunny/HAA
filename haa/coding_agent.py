@@ -1,5 +1,13 @@
 """ClaudeCodeACP — HAA↔Claude Code 编码通道（v0.6）。
 
+**停用保留（大修 D2 v1.1，2026-10-07）**：本通道默认停用——
+``config.acp.enabled`` 默认 false，ProjectController 在开关关闭时
+拒绝构造（不进默认导入链与工具菜单，不开启即完全不可达）。仅当新
+Harness 在编码任务上大声失败且短期无法修复时临时开启（降级实现）。
+计划书建议物理挪至 ``haa/fallback/``；M0 因安全扫描对既有
+subprocess 代码误报阻断移动，暂按计划书"ZCode 可调整"条款原位保留，
+门卫语义已完整落地。
+
 通过 ``acpx`` CLI（Agent Client Protocol 客户端）调用 Claude Code，
 将代码生成/调试任务委托给专业编码 Agent。HAA pipeline 保持状态机控制权，
 Claude Code 是无状态的代码生成/修复服务。

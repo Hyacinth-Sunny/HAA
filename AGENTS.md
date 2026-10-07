@@ -2,7 +2,11 @@
 
 自动科研工具：研究简报 → 论文前体（P1）→ 实验执行（P2）→ LaTeX 论文（P3）。Python 3.12 · litellm · SQLite · FastAPI/Jinja2/HTMX。当前版本 v1.0.6（批次已至 rev5，逐版见开发日志）。
 
+**★用语铁律（用户 2026-10-07 指示，逐字）**：无论是在回答还是在你编写的、具有告知书性质的文件中，都应尽量避免出现任何的自造词、生僻概念、没有或隐含语境的比喻，及简略性过强的表述，如果一定要用这些词语及表述来阐述新概念，或者这些词语及表述需要用来代替某些拖沓冗长的词汇或句子，请一定要在回答的最前面，用通俗易懂的语言逐条阐述这些词的具体含义。
+
 最新冒烟 smoke9（2026-08-28，rev4 修复首验）：3/3 前体 PUBLISHED、纯运行 7h22m 零阻断（②流式续体 0.7125 accept·correctness 0.7 历史最高、③见证账本 0.7125 accept·fidelity 0.95·英文 55K、①批量切口 0.6925 reject degraded）。
+
+**大修进行中（2026-10-07 起）**：权威文档为 `MDs/HAA大修计划书01~06`；已入 main 的批次见开发日志"大修批次"条目（批次0 基线检修、批次1 M0 Harness 核心，基线 509）。大修期间本文件与开发日志同步更新。
 
 ## 仓库布局（2026-10-06 重组）
 
@@ -20,13 +24,13 @@
 
 ```bash
 PY=/home/hyacinth-sunny/anaconda3/envs/haa/bin/python   # 唯一正确的 python（勿用 base/系统）
-$PY -m pytest                # 全量测试（当前基线 466）
+$PY -m pytest                # 全量测试（当前基线 509；大修批次1 起）
 $PY data/e2e_check.py        # 端到端体检三层（pytest + Web 路由 + 简报管线），退出码 0=全绿
 ./run_server.sh              # Web :8420（uvicorn api.server:app）
 ```
 
 - CLI：`$PY -m haa.cli.main project create|start|resume-p1|approve|advance ...`
-- 冒烟：`HAA_CONFIG=config/hatm-v2.yaml` + `DEEPSEEK_API_KEY`/`TAVILY_API_KEY`（key 见 `data/smoke8_run.log` 的 nohup 行）；切 GLM 用 `HAA_CONFIG=config/glm-flash.yaml` + `ZHIPU_API_KEY`（按量付费端点 `paas/v4`，Coding Plan 积分端点 `api/coding/paas/v4/` 勿混用；流式工具调用依赖 `llm.provider_options.tool_stream`，litellm 走 extra_body 通道；reasoning_effort 仅认 low/high/max；价目走 `llm.pricing` 兜底保预算闸）
+- 冒烟：`HAA_CONFIG=config/hatm-v2.yaml` + `DEEPSEEK_API_KEY`/`TAVILY_API_KEY`；切 GLM 用 `HAA_CONFIG=config/glm-flash.yaml` + `ZHIPU_API_KEY`（按量付费端点 `paas/v4`，Coding Plan 积分端点 `api/coding/paas/v4/` 勿混用；流式工具调用依赖 `llm.provider_options.tool_stream`，litellm 走 extra_body 通道；reasoning_effort 仅认 low/high/max；价目走 `llm.pricing` 兜底保预算闸）。**key 现场来源（2026-10-07 核实）**：TAVILY=`~/.config/systemd/user/openclaw-gateway.service`；ZHIPU 按量 key=`~/.zcode/v2/config.json` 的 `provider/builtin:bigmodel/options/apiKey`（**注意该账户需有余额**，余额不足报 1113）；DeepSeek key 已不在机器上（转录中已清）
 - 提示词调试：`$PY -c "from haa.prompts import render_prompt; ..."` 直接渲染查看
 
 ## 检修流程（硬性惯例）
@@ -73,5 +77,6 @@ ref/            其他自动科研工作流参考资料（AutoSci · DSH/deepsee
 5. cost 记账半盲（tokens 可见、$ 仍 0，deepseek 流式不回 usage）
 6. 均分制双刃（低分 correctness 可被拉回过审）
 7. 用户待确认简报条款："任务一使命显式化"（8-29 后）
+8. **大修 M0 兼容挂账两件（用户 2026-10-07 指定，工具部分开发完毕后必须清账）**：①工具桥接退役——`haa/harness/tools_bridge.py` 与 `haa/llm/tools.py` 旧注册表在 16 工具逐个迁入 `haa/harness/tools/` 后删除；②提示词"楼层化"投稿——各 stage 的 Jinja2 模板与 `_brief_block` 字符串拼接改为向 `haa/harness/prompt_sections.py` 楼层注册表投稿（楼层 200+，简报铁律块归楼层 0），`haa/prompts.py` 静态渲染通道随之退役
 
 完整 v1.1 议程见 `MDs/HAA项目说明书.md` 第七节。

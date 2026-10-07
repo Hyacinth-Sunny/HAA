@@ -191,7 +191,8 @@ memory:
 # --- Harness (大修第一章：自建 Harness；第六章特性开关登记处) ----------------
 harness:
   tool_menu: "config/tool_menu.yaml"   # 声明式工具菜单（缺文件回退代码内声明）
-  write_gate_enabled: false            # 先读后写闸门（M1 强化后默认开）
+  write_gate_enabled: true             # 先读后写闸门（M1 五个底层工具强化完成，默认开；置 false 可关回退）
+  ssh_servers: {}                      # SSH 服务器档案（第一章 §5.4：host/port/user/key_path，凭证只进配置）
   features:                            # 特性开关：默认全关，逐里程碑打开
     anchored_mode: false               # 第三章 §4 锚定模式（P1-a）
     divergence: false                  # 第三章 §5 SEEK 发散-收敛（P1-b）

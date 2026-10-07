@@ -262,16 +262,16 @@ class TestChecklist:
             name="writer", description="", parameters={"type": "object", "properties": {}},
             stages="*", handler=noop, guardrails={"writes_paths": True}, source="test",
         ))
-        # 未读先写 → 拒
+        # 未读先写（文件已存在）→ 拒
         with pytest.raises(hr.ToolError, match="never read"):
             reg.invoke("writer", {"path": str(f)}, stage_name="SEEK")
         # 读 → 写（同 mtime）→ 过
         reg.invoke("reader", {"path": str(f)}, stage_name="SEEK")
         assert reg.invoke("writer", {"path": str(f)}, stage_name="SEEK").content == "ok"
-        # mtime 变 → 拒
+        # mtime 变 → 拒（FS_STALE_VERSION，提示重读）
         future = time.time() + 50
         os.utime(f, (future, future))
-        with pytest.raises(hr.ToolError, match="mtime"):
+        with pytest.raises(hr.ToolError, match="FS_STALE_VERSION"):
             reg.invoke("writer", {"path": str(f)}, stage_name="SEEK")
 
     def test_write_gate_off_by_default(self, tmp_path):
@@ -456,7 +456,8 @@ class TestConfigAndACPGate:
         cfg = default_config()
         assert cfg.acp.enabled is False  # D2 停用保留默认关
         assert cfg.harness.tool_menu == "config/tool_menu.yaml"
-        assert cfg.harness.write_gate_enabled is False
+        # M1 验收第 4 条：先读后写闸门随五个底层工具强化完成，默认翻转为开
+        assert cfg.harness.write_gate_enabled is True
         assert cfg.harness.feature("anchored_mode") is False
         assert cfg.harness.feature("settlement") is False
 

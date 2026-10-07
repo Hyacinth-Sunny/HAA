@@ -266,6 +266,7 @@ class BaseStage:
         """
         from haa.harness.agent_loop import AgentLoop
         from haa.harness.registry import ToolMenu
+        from haa.harness.tools.native import apply_native_tools
         from haa.harness.tools_bridge import registry_from_legacy
         from haa.llm.tools import ToolRegistry
 
@@ -278,15 +279,24 @@ class BaseStage:
             )
             menu = ToolMenu.load(self.config.harness.tool_menu)
             write_gate = bool(self.config.harness.write_gate_enabled)
+            ssh_profiles = dict(self.config.harness.ssh_servers)
         else:
             legacy_registry = ToolRegistry(campaigns_dir="data/campaigns", client=registry_client)
             menu = ToolMenu(None)
             write_gate = False
+            ssh_profiles = {}
         harness_registry = registry_from_legacy(
             legacy_registry,
             event_sink=getattr(self.llm, "event_sink", None),
             write_gate_enabled=write_gate,
             menu=menu,
+        )
+        # M1 原生接管：五个底层工具的原生实现替换旧 handler（模型可见
+        # 契约不变），新增 job/ssh/监控五件；命令黑名单挂入检查链。
+        apply_native_tools(
+            harness_registry,
+            allowed_roots=(legacy_registry.campaigns_dir,),
+            ssh_profiles=ssh_profiles,
         )
         loop = AgentLoop(self.llm, harness_registry, event_sink=getattr(self.llm, "event_sink", None))
         if self.config is not None:

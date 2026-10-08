@@ -545,6 +545,39 @@ class TestSmoke10ReviewFixes:
         assert "条款覆盖勾验清单" in text and "缺失即重大偏离" in text
 
 
+class TestM2MiscTools:
+    """M2 起步件：glob 模式找文件 + budget_status 只读预算查询。"""
+
+    def test_glob_finds_by_pattern(self, tmp_path):
+        reg = ToolRegistry()
+        from haa.harness.tools.native import apply_native_tools
+        (tmp_path / "a.md").write_text("x")
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "b.py").write_text("y")
+        apply_native_tools(reg, allowed_roots=(tmp_path,))
+        r = reg.invoke("glob", {"pattern": "*.md"})
+        assert "a.md" in r.content and "b.py" not in r.content
+        r2 = reg.invoke("glob", {"pattern": "*.py"})
+        assert "b.py" in r2.content
+        assert "(no files" in reg.invoke("glob", {"pattern": "*.zzz"}).content
+
+    def test_budget_status_reports_caps(self, tmp_path):
+        from haa.config import BudgetConfig
+        from haa.state import StateStore
+        from haa.models import Brief
+        from haa.budget import BudgetManager
+        store = StateStore(tmp_path / "t.db")
+        camp = store.create_campaign(Brief(title="T", problem_area="P"))
+        store.save_event(event_type="llm_call", campaign_id=camp.id,
+                         stage="SEEK", tokens=1234, payload={})
+        reg = ToolRegistry()
+        from haa.harness.tools.native import apply_native_tools
+        svc = apply_native_tools(reg, allowed_roots=(tmp_path,))
+        svc.budget_ref = lambda: BudgetManager(
+            store, config=BudgetConfig(per_campaign_tokens=1_000_000))
+        r = reg.invoke("budget_status", {}, campaign_id=camp.id)
+        assert "tokens: used 1,234" in r.content and "cap 1,000,000" in r.content
+
 
 class TestBaseStageIntegration:
 

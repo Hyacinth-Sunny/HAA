@@ -171,10 +171,11 @@ class DockerSandbox:
                 "the command unconfined (fail-closed)"
             )
         ro = "" if writable else " --read-only"
+        ro_vol = "" if writable else ":ro"  # 绑定卷同随只读（--read-only 只锁容器层）
         net = "none" if network is None else network
         # 路径/镜像/命令全部 shlex.quote 严格引用（无注入面）
         docker_cmd = (
-            f"docker run --rm{ro} -v {shlex.quote(workspace)}:/workspace"
+            f"docker run --rm{ro} -v {shlex.quote(workspace)}:/workspace{ro_vol}"
             f" -w /workspace --network {shlex.quote(net)}"
             f" {shlex.quote(self.image)} /bin/bash -lc {shlex.quote(command)}"
         )

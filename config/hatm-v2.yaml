@@ -10,6 +10,15 @@ llm:
   api_key_env: "DEEPSEEK_API_KEY"
   sub_agent_model: "deepseek/deepseek-v4-flash"
 
+  # 价目兜底（smoke10 检视①收尾；来源 api-docs.deepseek.com 2026-10-08 实取）：
+  # deepseek-v4-pro 人民币/百万tokens——输入(缓存未命中) 空闲4.5/高峰9.0，
+  # 输出 空闲13.5/高峰27.0；此处按【高峰价×汇率7.1 四舍五入】保守计费
+  # （宁多扣不漏扣；缓存命中价远低，不做抵扣）。切 Flash 时改为下方注释值。
+  pricing:
+    input_per_m: 1.30
+    output_per_m: 3.80
+  # deepseek-flash（V4.1-Flash）高峰折美元备查：input 0.30 / output 1.15
+
 timeouts:
   llm: 300          # 空闲闸：相邻 chunk 间隔上限（流式化后语义）
   llm_wall: 1800    # 墙钟闸：单调用总上限

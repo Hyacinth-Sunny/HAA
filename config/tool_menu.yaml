@@ -5,14 +5,6 @@
 # haa/llm/tools.py 的 allowed_stages 逐字生成（2026-10-07），行为等价快照；
 # 后续调菜单只改本文件，不改代码。
 
-calculator:
-  - DESIGN
-  - EXP_FEASIBILITY
-  - EXP_SPEC
-  - GRADE
-  - SCREEN
-  - VERIFY
-
 describe_image:
   - DESIGN
   - EXP_FEASIBILITY

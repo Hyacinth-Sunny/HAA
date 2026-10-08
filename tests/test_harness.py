@@ -436,7 +436,10 @@ class TestLegacyBridge:
         from haa.llm.tools import ToolRegistry as LegacyRegistry
         legacy = LegacyRegistry()
         menu = ToolMenu.load("config/tool_menu.yaml")
+        retired = {"calculator"}  # D3 退役：Code Mode 已验收
         for name in legacy.names():
+            if name in retired:
+                continue
             t = legacy.get(name)
             declared = set(t.allowed_stages)
             if "*" in declared:

@@ -12,6 +12,8 @@ not assemble existing proofs from the web. Only read/write of the campaign dir.
 from __future__ import annotations
 
 from haa.prompts import render_prompt
+import logging as _logging
+_logger = _logging.getLogger(__name__)
 from haa.stages.base import BaseStage, StageResult
 
 
@@ -42,4 +44,14 @@ class DesignStage(BaseStage):
         )
         data = self._parse_json(result.content)
         data["trace"] = result.messages
+        # P1-b 概念档案：解析+校验+存入 context.extra
+        raw_concepts = data.get("concepts") or []
+        from haa.concept_archive import validate_concepts
+        cards, concept_errors = validate_concepts(raw_concepts)
+        if concept_errors:
+            _logger.warning("concept archive validation errors: %s", concept_errors[:3])
+            data["concept_errors"] = concept_errors  # 喂回模型（下轮 DESIGN 可修复）
+        context.extra["concepts"] = [c.model_dump() for c in cards]
+        context.extra["section_concepts"] = data.get("section_concepts") or {}
+
         return StageResult.continue_(**data)

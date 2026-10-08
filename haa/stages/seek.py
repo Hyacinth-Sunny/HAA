@@ -37,6 +37,10 @@ class SeekStage(BaseStage):
             else 5
         )
         anchor, anchor_idea_id, anchored = self._anchor(context)
+        diverge_on = self.config is None or self.config.harness.feature("divergence")
+        if diverge_on and not anchored and n > 1:
+            return self._run_divergence(campaign, context, brief, n)
+
         if anchored:
             # 行为矩阵（第三章 §4.2）：SEEK 降级为锚点细化——单候选、不发散
             prompt = (
@@ -81,6 +85,84 @@ class SeekStage(BaseStage):
             open_questions=data.get("open_questions", []),
             trace=result.messages,
         )
+
+    def _run_divergence(self, campaign, context, brief, n):
+        """发散-收敛三步（第三章 §5）：①k 个正交方向 → ②每方向候选 → ③聚类去重。"""
+        k = 5
+        if self.config is not None:
+            k = int(getattr(self.config.pipeline, "divergence_k", 5) or 5)
+        # 步骤 1：生成 k 个正交方向
+        result1 = self._run_agent(
+            self._render_diverge_prompt(brief, k),
+            stage_name=self.name, campaign_id=campaign.id,
+            json_mode=True, max_tool_calls=2,
+        )
+        data1 = self._parse_json(result1.content)
+        directions = [d for d in (data1.get("directions") or [])
+                      if isinstance(d, dict) and d.get("name")][:k]
+        if not directions:
+            directions = [{"name": "default", "core_conflict": "",
+                           "mechanism_hint": "", "risk_level": "balanced"}]
+        # 步骤 2：每方向独立生成候选
+        all_candidates = []
+        per_dir = max(1, n // max(len(directions), 1))
+        for direction in directions:
+            result2 = self._run_agent(
+                render_prompt("seek_direction", brief=brief,
+                              direction=direction, n=per_dir)
+                + self._brief_block(brief)
+                + self._campaign_tomb_block(campaign, context),
+                stage_name=self.name, campaign_id=campaign.id,
+                json_mode=True, max_tool_calls=self._tool_limit(10),
+            )
+            data2 = self._parse_json(result2.content)
+            raw_ideas = data2.get("ideas") or data2.get("candidates") or []
+            for idx, idea in enumerate(raw_ideas[:per_dir]):
+                if isinstance(idea, dict):
+                    idea["_direction"] = direction.get("name", "")
+                    all_candidates.append(idea)
+        # 步骤 3：聚类去重（v1 确定性：同 direction 内 title 相似>0.7 去重）
+        deduped = self._cluster_dedup(all_candidates)
+        candidates = [
+            self._to_candidate(idea, campaign.id, idx)
+            for idx, idea in enumerate(deduped[:n])
+            if isinstance(idea, dict)
+        ]
+        if not candidates:
+            return StageResult.abort_campaign(
+                reason="seek: divergence produced no candidates")
+        context.candidates = candidates
+        context.extra["divergence_directions"] = [
+            d.get("name") for d in directions]
+        return StageResult.continue_(
+            candidates=candidates,
+            directions=[d.get("name") for d in directions],
+        )
+
+    def _render_diverge_prompt(self, brief, k):
+        from haa.prompts import render_prompt as _rp
+        return _rp("seek_diverge", brief=brief, k=k) + self._brief_block(brief) \
+            + self._campaign_tomb_block(None, context=None) if False else \
+            _rp("seek_diverge", brief=brief, k=k) + self._brief_block(brief)
+
+    @staticmethod
+    def _cluster_dedup(ideas, threshold=0.7):
+        """轻量去重：同方向内 title 相似度>阈值只留首个（v1 确定性；v2 换 LLM）。"""
+        import difflib
+        kept: list[dict] = []
+        for idea in ideas:
+            title = str(idea.get("title", ""))
+            dup = False
+            for existing in kept:
+                if existing.get("_direction") == idea.get("_direction"):
+                    ratio = difflib.SequenceMatcher(
+                        None, title, str(existing.get("title", ""))).ratio()
+                    if ratio > threshold:
+                        dup = True
+                        break
+            if not dup:
+                kept.append(idea)
+        return kept
 
     @staticmethod
     def _to_candidate(idea: dict, campaign_id: str, idx: int) -> Candidate:

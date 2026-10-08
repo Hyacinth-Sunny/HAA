@@ -64,10 +64,12 @@ class TimeoutsConfig:
 
 @dataclass(frozen=True)
 class BudgetConfig:
-    """Dual-layer caps (USD); see haa/budget.py."""
+    """Dual-layer caps (USD) + token 双层帽（smoke10 检视：cost 半盲时兜底）。"""
 
     per_campaign: float = 10.0
     global_limit: float = 100.0
+    per_campaign_tokens: int = 30_000_000   # 0=不设 token 帽
+    global_tokens: int = 120_000_000
 
 
 @dataclass(frozen=True)

@@ -575,6 +575,19 @@ class StateStore:
             duration_s=duration_s, created_at=created_at,
         )
 
+    def sum_tokens(self, campaign_id: str | None = None) -> int:
+        """events 表 llm_call 的 tokens 汇总（token 帽数据源，smoke10 检视项①）。"""
+        if campaign_id is None:
+            row = self._conn.execute(
+                "SELECT COALESCE(SUM(tokens),0) FROM events WHERE event_type='llm_call'"
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT COALESCE(SUM(tokens),0) FROM events WHERE event_type='llm_call' AND campaign_id=?",
+                (campaign_id,),
+            ).fetchone()
+        return int(row[0] or 0)
+
     def list_events(self, campaign_id: str | None = None) -> list[Event]:
         """All events (optionally for one campaign), oldest first."""
         query = (

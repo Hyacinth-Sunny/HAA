@@ -127,6 +127,7 @@ web_search:
 write_file:
   - DESIGN
   - EXP_SPEC
+  - PILOT
   - REFINE
   - SCREEN
   - WRITE
@@ -138,4 +139,19 @@ job_output:
 job_kill:
   - SCREEN
   - VERIFY
+
+run_experiment:
+  - EXP_SPEC
+  - EXP_FEASIBILITY
+  - PILOT
+
+experiment_status:
+  - EXP_SPEC
+  - EXP_FEASIBILITY
+  - PILOT
+
+budget_status:
+  - EXP_SPEC
+  - EXP_FEASIBILITY
+  - PILOT
 

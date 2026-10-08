@@ -41,7 +41,8 @@ _STAGE_FILES: dict[str, str] = {
     "REFINE": "paper",          # 精修后的最新 paper 覆盖同名工件
     "EXP_SPEC": "exp_spec",     # 存 extra.exp_spec
     "VERIFY": "verify",         # verify_findings + verify_passed
-    "EXP_FEASIBILITY": "exp_feasibility",  # extra.exp_findings（blockers）
+    "EXP_FEASIBILITY": "exp_feasibility",
+    "PILOT": "pilot",  # 先导实验判决（M2）  # extra.exp_findings（blockers）
 }
 
 

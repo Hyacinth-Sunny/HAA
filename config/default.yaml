@@ -210,3 +210,4 @@ harness:
     branch_tree: false                 # 第三章 §9 top-k 分支树（P1-c）
     code_mode: false                   # 第一章 §11 run_code（第三批）
     fallback_acp: false                # D2 降级开关（与 acp.enabled 双确认）
+    pilot: false                         # 第三章 §8.2 先导实验微阶段（M2）                # D2 降级开关（与 acp.enabled 双确认）

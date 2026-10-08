@@ -22,6 +22,7 @@ from haa.harness.prompt_sections import FLOOR_TOOL_RULES, Section
 from haa.harness.registry import ToolRegistry, ToolSpec
 from haa.harness.tools import exec_bash as bash_mod
 from haa.harness.tools import misc as misc_mod
+from haa.harness.tools import run_experiment as runexp_mod
 from haa.harness.tools import experiment_status as monitor_mod
 from haa.harness.tools import fs_tools
 from haa.harness.tools import sandbox as sandbox_mod
@@ -29,7 +30,7 @@ from haa.harness.tools import ssh_tools
 from haa.harness.tools.exec_bash import ForegroundRunner
 from haa.harness.tools.experiment_status import MonitorService
 from haa.harness.tools.jobs import JobManager
-from haa.harness.tools.sandbox import CommandBlacklist
+from haa.harness.tools.sandbox import CommandBlacklist, DockerSandbox
 from haa.harness.tools.ssh_tools import SSHServerProfile, SSHService
 
 logger = logging.getLogger("haa.harness.tools.native")
@@ -53,6 +54,7 @@ class NativeServices:
         })
         self.monitor = MonitorService(self.jobs)
         self.sandbox = CommandBlacklist()
+        self.docker = DockerSandbox()
         self.budget_ref = None  # 可注入的预算管理器引用（budget_status 用）
 
     def path_allowed(self, path: str) -> bool:
@@ -220,7 +222,7 @@ def apply_native_tools(registry: ToolRegistry, *, allowed_roots: tuple[Path, ...
         ("read_file", READ_FILE_SCHEMA, fs_handlers["read_file"],
          "*", {"reads_paths": True}),
         ("write_file", WRITE_FILE_SCHEMA, fs_handlers["write_file"],
-         ("SCREEN", "DESIGN", "WRITE", "REFINE", "EXP_SPEC"), {"writes_paths": True}),
+         ("SCREEN", "DESIGN", "WRITE", "REFINE", "EXP_SPEC", "PILOT"), {"writes_paths": True}),
         ("edit_file", EDIT_FILE_SCHEMA, fs_handlers["edit_file"],
          ("SCREEN", "DESIGN", "WRITE", "REFINE"), {"writes_paths": True}),
     ]
@@ -242,6 +244,7 @@ def apply_native_tools(registry: ToolRegistry, *, allowed_roots: tuple[Path, ...
             guardrails=guardrails, source="harness.tools.native",
         ))
     misc_handlers = misc_mod.make_handlers(services)
+    runexp_handlers = runexp_mod.make_handlers(services)
     additions += [
         ("glob", {
             "type": "object",
@@ -258,6 +261,18 @@ def apply_native_tools(registry: ToolRegistry, *, allowed_roots: tuple[Path, ...
             "properties": {},
             "required": [],
         }, misc_handlers["budget_status"], (), {}),
+        ("run_experiment", {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string",
+                              "description": "Experiment dir containing solve.sh."},
+                "timeout_s": {"type": "integer",
+                              "description": "Timeout in seconds (default 600, max 7200)."},
+                "container": {"type": "boolean",
+                              "description": "Run in the docker sandbox (default true)."},
+            },
+            "required": ["workspace"],
+        }, runexp_handlers["run_experiment"], (), {}),
     ]
     for name, schema, handler, stages, guardrails in additions:
         registry.unregister(name)

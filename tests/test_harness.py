@@ -495,6 +495,57 @@ class TestConfigAndACPGate:
 #  BaseStage 集成：_make_agent_loop 返回新 Harness 循环
 # --------------------------------------------------------------------------- #
 
+
+class TestSmoke10ReviewFixes:
+    """smoke10 OpenClaw 检视修复的锚定：失败重试不计帽+保险丝、token 帽、
+    fidelity 条款覆盖勾验。"""
+
+    def test_failed_tool_calls_do_not_consume_budget(self):
+        reg = ToolRegistry()
+        reg.register(_spec())  # t_echo 只在 SEEK 可用 → GRADE 调用恒失败
+        client = _ScriptedClient([
+            _Resp(tool_calls=[_tc("t_echo", {"x": "1"})]),
+            _Resp(tool_calls=[_tc("t_echo", {"x": "2"})]),
+            _Resp(tool_calls=[_tc("t_echo", {"x": "3"})]),
+            _Resp(content="done-after-failures"),
+        ])
+        result = AgentLoop(client, reg).run("go", stage_name="GRADE", max_tool_calls=2)
+        assert result.content == "done-after-failures"  # 3 次失败未触发 2 的帽
+        assert result.truncated is False
+
+    def test_consecutive_failure_fuse_finalizes(self):
+        reg = ToolRegistry()
+        reg.register(_spec())
+        script = [_Resp(tool_calls=[_tc("t_echo", {"x": str(i)})]) for i in range(12)]
+        script.append(_Resp(content="fused"))
+        result = AgentLoop(_ScriptedClient(script), reg).run(
+            "go", stage_name="GRADE", max_tool_calls=100)
+        assert result.truncated is True
+        assert result.content == "fused"
+
+    def test_token_caps_enforced(self, tmp_path):
+        from haa.budget import BudgetManager, BudgetExhausted
+        from haa.config import BudgetConfig
+        from haa.state import StateStore
+
+        store = StateStore(tmp_path / "t.db")
+        from haa.models import Brief
+        brief = Brief(title="T", problem_area="P")
+        camp = store.create_campaign(brief)
+        for _ in range(3):
+            store.save_event(event_type="llm_call", campaign_id=camp.id,
+                             stage="SEEK", tokens=11_000_000, payload={})
+        budget = BudgetManager(store, config=BudgetConfig(per_campaign_tokens=30_000_000))
+        with pytest.raises(BudgetExhausted, match="tokens_campaign"):
+            budget.pre_spend(camp.id, 0.01, gate=True)
+
+    def test_fidelity_prompt_has_coverage_checklist(self):
+        from haa.prompts import render_prompt
+        text = render_prompt("review/fidelity", brief_block="⛓⛓⛓ 简报铁律 ⛓⛓⛓")
+        assert "条款覆盖勾验清单" in text and "缺失即重大偏离" in text
+
+
+
 class TestBaseStageIntegration:
 
     def test_make_agent_loop_builds_harness_loop(self, monkeypatch):

@@ -91,7 +91,9 @@ class Reservation:
 class BudgetManager:
     """Accounting + gating for per-campaign and global spend."""
 
-    def __init__(self, store: StateStore, global_limit: float = 500.0):
+    def __init__(self, store: StateStore, global_limit: float = 500.0,
+                 config=None):
+        self.config = config
         self.store = store
         self.global_limit = float(global_limit)
 
@@ -120,7 +122,9 @@ class BudgetManager:
         """Reserve ``amount`` for an upcoming LLM call.
 
         * ``gate=True``  — enforce limits; raise :class:`BudgetExhausted` if the
-          spend would breach the per-campaign or global cap.
+          spend would breach the per-campaign or global cap. Token 双层帽
+          （smoke10 检视：cost 半盲时的兜底闸）同在此时核查——已发生 tokens
+          （events 表汇总）超帽即拒，下次调用不再放行。
         * ``gate=False`` — record the spend but NEVER raise (GRADE/WRITE,
           Lesson 5). The campaign may go over its cap; that is intended.
 
@@ -148,6 +152,22 @@ class BudgetManager:
                 raise BudgetExhausted(
                     "global", self.global_limit, would_use_global, campaign_id
                 )
+            # token 双层帽（smoke10 检视项①：cost 半盲兜底；0=不设）
+            cfg = getattr(self, "config", None)
+            per_tok = getattr(cfg, "per_campaign_tokens", 0) or 0
+            glob_tok = getattr(cfg, "global_tokens", 0) or 0
+            if per_tok or glob_tok:
+                used_tok = self.store.sum_tokens(campaign_id)
+                if per_tok and used_tok > per_tok:
+                    raise BudgetExhausted(
+                        "tokens_campaign", per_tok, used_tok, campaign_id
+                    )
+                if glob_tok:
+                    g_used = self.store.sum_tokens(None)
+                    if g_used > glob_tok:
+                        raise BudgetExhausted(
+                            "tokens_global", glob_tok, g_used, campaign_id
+                        )
 
         # Crash-safe reserve: persist the deduction BEFORE the call goes out.
         campaign.budget_used += amount

@@ -147,7 +147,9 @@ class AgentLoop:
         iterations = 0
         truncated = False
         cost = 0.0
-        calls_made = 0
+        calls_made = 0            # 只计成功调用（smoke10 检视④：失败重试吃
+        consecutive_failures = 0  # 掉证据额度——失败不占帽；连续失败保险丝
+        _MAX_CONSECUTIVE_FAILURES = 12  # 防失败死循环空转
         last_content = ""
         loop_start = time.monotonic()
 
@@ -168,7 +170,6 @@ class AgentLoop:
                 break
 
             for tc in tool_calls:
-                calls_made += 1
                 fn = tc.get("function") or {}
                 name = str(fn.get("name", ""))
                 args = self._parse_args(fn.get("arguments", "{}"))
@@ -190,6 +191,11 @@ class AgentLoop:
                 self._log.info(
                     "tool %s ok=%s %.2fs stage=%s", name, err is None, duration, stage_name
                 )
+                if err is None:
+                    calls_made += 1
+                    consecutive_failures = 0
+                else:
+                    consecutive_failures += 1
                 history.append(
                     ToolInvocation(
                         name=name,
@@ -212,12 +218,14 @@ class AgentLoop:
                 and calls_made > 0
                 and time.monotonic() > (loop_start + deadline_s)
             )
-            if calls_made >= max_tool_calls or deadline_hit:
+            failure_fuse = consecutive_failures >= _MAX_CONSECUTIVE_FAILURES
+            if calls_made >= max_tool_calls or deadline_hit or failure_fuse:
                 truncated = True
                 reason = (
                     "tool-call budget reached"
                     if calls_made >= max_tool_calls
-                    else "stage wall-clock deadline reached"
+                    else ("consecutive tool failures" if failure_fuse
+                          else "stage wall-clock deadline reached")
                 )
                 messages.append({
                     "role": "user",

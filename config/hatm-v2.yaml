@@ -18,6 +18,11 @@ timeouts:
 budget:
   per_campaign: 10.0
   global_limit: 5.0
+  # smoke10 检视项①：cost 记账半盲（deepseek 流式不回 usage、无单价表）→
+  # token 双层帽兜底（OpenClaw 建议 30M/120M）。单价表挂账：待用户提供
+  # deepseek-v4-pro 官方价目后加 llm.pricing（input_per_m/output_per_m）。
+  per_campaign_tokens: 30000000
+  global_tokens: 120000000
 
 pipeline:
   max_design_rounds: 3
@@ -30,17 +35,17 @@ pipeline:
     # 2026-08-27 rev4 按 smoke8 全量撞帽统计（20 次，见开发日志）+ 用户裁决放量：
     # 撞帽=被迫无工具收尾交判决（审查依据不全）；本次冒烟目标=各阶段完整走完。
     SEEK: 24         # smoke8 撞 21/20；fetch_paper_fulltext 全文核验会增调用量
-    NOVELTY: 35      # 4/4 campaign 撞 12/10（用户裁决；多角度+带年份查重吃调用）
+    NOVELTY: 45   # smoke10 检视：web_fetch 失败重试吃额度（4 截断）      # 4/4 campaign 撞 12/10（用户裁决；多角度+带年份查重吃调用）
     SCREEN: 50       # 4/4 撞 9/8（用户裁决；写→跑→看反例脚本一角度 3-4 次）
     DESIGN: 50
     VERIFY: 36       # worker 循环末轮用光 30/30
     GRADE: 5
-    WRITE: 16        # worker 撞 13/12（四节分章 write_file）
+    WRITE: 20     # smoke10 检视：2 截断且与漏项相关        # worker 撞 13/12（四节分章 write_file）
     REVIEW: 2
-    REFINE: 20       # 3 次撞 6-8/6（用户裁决；四路评审意见多章改写）
-    EXP_SPEC: 18       # smoke8 实证：三问联合简报的实验矩阵大，4 轮返工每轮
+    REFINE: 24    # smoke10 检视       # 3 次撞 6-8/6（用户裁决；四路评审意见多章改写）
+    EXP_SPEC: 26  # smoke10 检视：两幸存战役 4/4 全撞帽（smoke8 同型旧病）       # smoke8 实证：三问联合简报的实验矩阵大，4 轮返工每轮
                        # 都撞 14 帽截断（15-17 次）后带 blocker degraded 进 WRITE
-    EXP_FEASIBILITY: 16  # 同上：每轮撞 12 帽（13 次）
+    EXP_FEASIBILITY: 22  # smoke10 检视：同上  # 同上：每轮撞 12 帽（13 次）
 
 storage:
   db_path: "data/haa.db"       # 主库（实战姿态）

@@ -23,6 +23,7 @@ from haa.harness.registry import ToolRegistry, ToolSpec
 from haa.harness.tools import exec_bash as bash_mod
 from haa.harness.tools import misc as misc_mod
 from haa.harness.tools import run_experiment as runexp_mod
+from haa.harness.tools import batch10_13 as b12
 from haa.harness.tools import experiment_status as monitor_mod
 from haa.harness.tools import fs_tools
 from haa.harness.tools import sandbox as sandbox_mod
@@ -245,6 +246,11 @@ def apply_native_tools(registry: ToolRegistry, *, allowed_roots: tuple[Path, ...
         ))
     misc_handlers = misc_mod.make_handlers(services)
     runexp_handlers = runexp_mod.make_handlers(services)
+    from haa.memory_bank import MemoryBank
+    from haa.config import _PROJECT_ROOT
+    bank = MemoryBank(_PROJECT_ROOT / "data" / "memory")
+    mem_q = b12._make_memory_query(bank)
+    mem_w = b12._make_memory_write(bank)
     additions += [
         ("glob", {
             "type": "object",
@@ -261,6 +267,56 @@ def apply_native_tools(registry: ToolRegistry, *, allowed_roots: tuple[Path, ...
             "properties": {},
             "required": [],
         }, misc_handlers["budget_status"], (), {}),
+        ("compile_latex", {
+            "type": "object",
+            "properties": {"tex_file": {"type": "string"}},
+            "required": ["tex_file"],
+        }, b12._compile_latex, (), {}),
+        ("citation_graph", {
+            "type": "object",
+            "properties": {"doi": {"type": "string"},
+                            "title": {"type": "string"}},
+        }, b12._citation_graph, ("NOVELTY",), {}),
+        ("citation_verify", {
+            "type": "object",
+            "properties": {"doi": {"type": "string"},
+                            "title": {"type": "string"}},
+        }, b12._citation_verify, (), {}),
+        ("search_analog", {
+            "type": "object",
+            "properties": {"fingerprint": {"type": "object"},
+                            "query": {"type": "string"}},
+        }, b12._search_analog, ("NOVELTY", "SEEK"), {}),
+        ("memory_query", {
+            "type": "object",
+            "properties": {"problem_class": {"type": "string"},
+                            "text_like": {"type": "string"},
+                            "top_n": {"type": "integer"}},
+        }, mem_q, ("SEEK",), {}),
+        ("memory_write", {
+            "type": "object",
+            "properties": {"entity": {"type": "string"},
+                            "data": {"type": "object"},
+                            "writer": {"type": "string"}},
+            "required": ["entity", "data"],
+        }, mem_w, (), {}),
+        ("spawn_subagent", {
+            "type": "object",
+            "properties": {"task": {"type": "string"}},
+            "required": ["task"],
+        }, b12._make_spawn_subagent(services), (), {}),
+        ("run_code", {
+            "type": "object",
+            "properties": {"code": {"type": "string"}},
+            "required": ["code"],
+        }, b12._make_run_code(services), (), {}),
+        ("report_challenge", {
+            "type": "object",
+            "properties": {"challenge_type": {"type": "string"},
+                            "evidence": {"type": "string"},
+                            "suggested_action": {"type": "string"}},
+            "required": ["challenge_type", "evidence"],
+        }, b12._make_report_challenge(services), (), {}),
         ("run_experiment", {
             "type": "object",
             "properties": {

@@ -588,6 +588,14 @@ class StateStore:
             ).fetchone()
         return int(row[0] or 0)
 
+    def delete_campaign_events(self, campaign_id: str) -> int:
+        """B4 轮转：删除指定 campaign 的事件（归档后调用）。"""
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM events WHERE campaign_id = ?", (campaign_id,))
+            self._conn.commit()
+            return cur.rowcount
+
     def list_events(self, campaign_id: str | None = None) -> list[Event]:
         """All events (optionally for one campaign), oldest first."""
         query = (

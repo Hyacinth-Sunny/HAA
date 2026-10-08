@@ -56,7 +56,18 @@ class NativeServices:
         self.monitor = MonitorService(self.jobs)
         self.sandbox = CommandBlacklist()
         self.docker = DockerSandbox()
-        self.budget_ref = None  # 可注入的预算管理器引用（budget_status 用）
+        self.budget_ref = None
+        # B1: ripgrep 分发——启动时探测+赋执行权限（DSH 同款做法）
+        import os as _os
+        _rg = Path(__file__).parent.parent / "bin" / "rg"
+        if _rg.exists():
+            try:
+                _os.chmod(_rg, 0o755)
+                self.rg_path = str(_rg)
+            except OSError:
+                self.rg_path = ""
+        else:
+            self.rg_path = ""  # 可注入的预算管理器引用（budget_status 用）
 
     def path_allowed(self, path: str) -> bool:
         p = Path(path).expanduser()

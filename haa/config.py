@@ -84,7 +84,10 @@ class PipelineConfig:
     seek_candidate_count: int = 5
     max_exp_rounds: int = 3              # EXP_SPEC⇄EXP_FEASIBILITY inner loop（Phase A）
     max_exp_to_design_rounds: int = 1    # EXP→DESIGN outer loop
-    output_candidate_count: int = 3      # SEEK 后幸存到 NOVELTY/SCREEN 筛查的候选上限（P1 批量）
+    output_candidate_count: int = 3
+    divergence_k: int = 5  # SEEK 正交方向数（第三章 §5）
+    branch_budget_factor: float = 0.6  # 分支预算倍率（第三章 §9）
+    max_branches: int = 3  # top-k 分支树上限（§9，与 beam_width 对齐）      # SEEK 后幸存到 NOVELTY/SCREEN 筛查的候选上限（P1 批量）
     # 每阶段工具调用上限覆盖（键 = 阶段名大写；空 = 用各 stage 内置默认）。
     # 冒烟审计：轻模型校准的硬编码上限在 v4-pro 下 19 次截断（DESIGN 5/5 打满）。
     stage_tool_limits: dict[str, int] = field(default_factory=dict)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import litellm
@@ -557,3 +558,52 @@ def test_no_pricing_keeps_zero_cost():
     client = LLMClient("openai/glm-5.3-flash", completion_fn=fake_completion, cost_fn=lambda r: 0.0)
     resp = client.call([{"role": "user", "content": "hi"}])
     assert resp.usage.cost_usd == 0.0
+
+
+class TestTieredPricing:
+    """峰谷双档计价（2026-10-08 官方窗口：DeepSeek 工作日 9-12/14-18；
+    GLM 工作日 14-18；北京时间）。"""
+
+    def _pricing(self):
+        return {"input_per_m": 1.30, "output_per_m": 3.80,
+                "input_per_m_offpeak": 0.65, "output_per_m_offpeak": 1.90}
+
+    def test_peak_windows_deepseek_glm_weekend(self):
+        from datetime import datetime, timedelta, timezone
+
+        from haa.llm.client import _is_peak
+        bz = timezone(timedelta(hours=8))
+        ds = "deepseek/deepseek-v4-pro"
+        assert _is_peak(ds, datetime(2026, 10, 7, 9, tzinfo=bz))       # 周三 9 点
+        assert _is_peak(ds, datetime(2026, 10, 7, 11, 59, tzinfo=bz))
+        assert not _is_peak(ds, datetime(2026, 10, 7, 13, tzinfo=bz))  # 午休空闲
+        assert _is_peak(ds, datetime(2026, 10, 7, 17, tzinfo=bz))
+        assert not _is_peak(ds, datetime(2026, 10, 7, 18, tzinfo=bz))  # 边界外
+        assert not _is_peak(ds, datetime(2026, 10, 10, 10, tzinfo=bz))  # 周六
+        assert _is_peak("glm-5.3", datetime(2026, 10, 7, 15, tzinfo=bz))
+        assert not _is_peak("glm-5.3", datetime(2026, 10, 7, 10, tzinfo=bz))  # GLM 无早窗
+
+    def test_tiered_rates_pick_offpeak(self):
+        from datetime import datetime, timedelta, timezone
+
+        from haa.llm.client import _tiered_rates
+        bz = timezone(timedelta(hours=8))
+        pr = self._pricing()
+        assert _tiered_rates("deepseek/x", pr,
+                             datetime(2026, 10, 7, 10, tzinfo=bz)) == (1.30, 3.80)
+        assert _tiered_rates("deepseek/x", pr,
+                             datetime(2026, 10, 7, 13, tzinfo=bz)) == (0.65, 1.90)
+        single = {"input_per_m": 1.0, "output_per_m": 2.0}  # 无 offpeak 键=单档
+        assert _tiered_rates("deepseek/x", single,
+                             datetime(2026, 10, 7, 13, tzinfo=bz)) == (1.0, 2.0)
+
+    def test_usage_cost_uses_tier(self):
+        from haa.llm.client import LLMClient, _now_beijing, _tiered_rates
+        client = LLMClient("deepseek/deepseek-v4-pro", pricing=self._pricing(),
+                           cost_fn=lambda r: 0.0)
+        raw = {"usage": {"prompt_tokens": 1_000_000,
+                         "completion_tokens": 1_000_000}}
+        u = client._extract_usage(raw)
+        in_r, out_r = _tiered_rates("deepseek/deepseek-v4-pro",
+                                    self._pricing(), _now_beijing())
+        assert abs(u.cost_usd - (in_r + out_r)) < 1e-6

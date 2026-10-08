@@ -33,6 +33,38 @@ from haa.budget import BudgetManager, Reservation, is_gated_stage
 logger = logging.getLogger("haa.llm")
 
 
+# --- 峰谷双档计价（2026-10-08 用户提供官方定义，北京时间） ---------------------
+
+
+def _now_beijing():
+    from datetime import datetime, timezone, timedelta
+
+    return datetime.now(timezone(timedelta(hours=8)))
+
+
+# 各家族高峰窗口（工作日=周一~周五；区间为 [start, end) 小时，北京时间）
+_PEAK_WINDOWS = {
+    "deepseek": ((9, 12), (14, 18)),   # 官方：工作日 9-12 与 14-18
+    "glm": ((14, 18),),                # 官方：工作日 14-18
+}
+
+
+def _is_peak(model: str, now) -> bool:
+    family = "glm" if "glm" in (model or "").lower() else "deepseek"
+    if now.weekday() >= 5:  # 周末一律空闲
+        return False
+    hour = now.hour
+    return any(start <= hour < end for start, end in _PEAK_WINDOWS[family])
+
+
+def _tiered_rates(model: str, pricing: dict, now) -> tuple[float, float]:
+    """按峰谷档取 (输入单价, 输出单价)——高峰用主键，空闲用 *_offpeak。"""
+    if _is_peak(model, now):
+        return float(pricing["input_per_m"]), float(pricing["output_per_m"])
+    return (float(pricing.get("input_per_m_offpeak", pricing["input_per_m"])),
+            float(pricing.get("output_per_m_offpeak", pricing["output_per_m"])))
+
+
 # --- exceptions --------------------------------------------------------------
 
 
@@ -629,10 +661,17 @@ class LLMClient:
         if not cost and self.pricing and (prompt or completion):
             # 价目兜底（遗留 #2 修）：litellm 价目表不认识的模型恒 0 →
             # 按配置单价从真实 token 数自算，预算闸不再致盲。
+            # 峰谷双档（2026-10-08 用户提供的官方峰谷定义）：配置带
+            # *_offpeak 时按北京时间判档取价，否则单档。
             try:
+                in_rate = float(self.pricing["input_per_m"])
+                out_rate = float(self.pricing["output_per_m"])
+                if "input_per_m_offpeak" in self.pricing:
+                    in_rate, out_rate = _tiered_rates(
+                        self.model, self.pricing, _now_beijing())
                 cost = (
-                    prompt / 1_000_000 * float(self.pricing["input_per_m"])
-                    + completion / 1_000_000 * float(self.pricing["output_per_m"])
+                    prompt / 1_000_000 * in_rate
+                    + completion / 1_000_000 * out_rate
                 )
             except (KeyError, TypeError, ValueError):
                 cost = 0.0

@@ -80,6 +80,8 @@ ref/            其他自动科研工作流参考资料（AutoSci · DSH/deepsee
 8. **大修 M0 兼容挂账两件（用户 2026-10-07 指定，工具部分开发完毕后必须清账）**：①工具桥接退役——`haa/harness/tools_bridge.py` 与 `haa/llm/tools.py` 旧注册表在 16 工具逐个迁入 `haa/harness/tools/` 后删除；②提示词"楼层化"投稿——各 stage 的 Jinja2 模板与 `_brief_block` 字符串拼接改为向 `haa/harness/prompt_sections.py` 楼层注册表投稿（楼层 200+，简报铁律块归楼层 0），`haa/prompts.py` 静态渲染通道随之退役
 
 8. 语言润色模块（OpenClaw smoke10 检视建议不增设；用户 2026-10-08 定：**属 P3 部分，记账**——P3 成稿阶段若 quality 失分以措辞为主，在 P3 成稿前接入，REFINE 专注论证）
-9. DeepSeek 价目已入配置（2026-10-08 实取，v4-pro 高峰价保守折美元 1.30/3.80）；**模型二选一**：deepseek-v4-pro（现用）或 deepseek-flash（V4.1-Flash，并发 2500、价约 1/3.4，备查折价 0.30/1.15）
+9. **峰谷双档计价已工程化**（2026-10-08 用户提供官方窗口）：DeepSeek 高峰=工作日 9-12/14-18、GLM 高峰=工作日 14-18（北京时间，其余空闲）；client 按北京时间判档取 `llm.pricing` 主档/`*_offpeak` 档；v4-pro 空闲档 0.65/1.90 已配
+10. **离线 tokenizer 资产**：`~/actionboard/deepseek_v4_tokenizer`（transformers AutoTokenizer，encode 计数）——在线 usage 可得时不必用；离线/校准场景（如墓穴注入字符→token 折算校准挂账）用此工具
+11. DeepSeek 价目已入配置（2026-10-08 实取，v4-pro 高峰价保守折美元 1.30/3.80）；**模型二选一**：deepseek-v4-pro（现用）或 deepseek-flash（V4.1-Flash，并发 2500、价约 1/3.4，备查折价 0.30/1.15）
 
 完整 v1.1 议程见 `MDs/HAA项目说明书.md` 第七节。

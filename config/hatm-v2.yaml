@@ -17,7 +17,9 @@ llm:
   pricing:
     input_per_m: 1.30
     output_per_m: 3.80
-  # deepseek-flash（V4.1-Flash）高峰折美元备查：input 0.30 / output 1.15
+    input_per_m_offpeak: 0.65   # 空闲档（工作日 9-12/14-18 外，北京时间）
+    output_per_m_offpeak: 1.90
+  # deepseek-flash（V4.1-Flash）折美元备查——高峰 input 0.30 / output 1.15；空闲 0.15 / 0.60
 
 timeouts:
   llm: 300          # 空闲闸：相邻 chunk 间隔上限（流式化后语义）

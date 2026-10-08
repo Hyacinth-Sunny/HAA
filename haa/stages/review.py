@@ -45,6 +45,7 @@ class ReviewStage(BaseStage):
         ("quality", "review/quality"),
         ("industry", "review/industry"),
         ("fidelity", "review/fidelity"),
+        ("external", "review/external"),  # 第五路异家族（§12）
     )
 
     def run(self, campaign, context):  # noqa: D401
@@ -59,11 +60,30 @@ class ReviewStage(BaseStage):
         agent = self._make_agent_loop()
         reports: dict = {}
         scores: dict = {}
+        from haa.review_trio import render_wisdom_injection, run_external_review
+        paper_type = str((context.extra or {}).get("paper_type", "general"))
         for lens, prompt_name in self.lenses:
+            if lens == "external":
+                # 第五路异家族——不走 agent loop（模型路由不同）
+                ext = run_external_review(review_text, config=self.config,
+                                          brief_block=brief_block)
+                reports[lens] = {
+                    "score": ext.get("score"),
+                    "verdict": ext.get("verdict", ""),
+                    "major_issues": ext.get("major_issues", []),
+                    "minor_issues": [],
+                }
+                if ext.get("score") is not None:
+                    scores[lens] = ext["score"]
+                continue
             system_prompt = render_prompt(
                 prompt_name,
                 brief_block=brief_block,
             )
+            # 智慧库注入（§12 第 1 条：按分型匹配切片）
+            wisdom_block = render_wisdom_injection(lens, paper_type)
+            if wisdom_block:
+                system_prompt = system_prompt + "\n\n" + wisdom_block
             res = agent.run(
                 review_text,
                 system_prompt=system_prompt,
@@ -80,6 +100,14 @@ class ReviewStage(BaseStage):
                 "minor_issues": data.get("minor_issues", []) or [],
             }
             scores[lens] = reports[lens]["score"]
+
+        # 区分度检测（§12 第 3 条：极差<0.5 → 触发标准修订）
+        from haa.review_trio import needs_standard_revision
+        revision_count = int((context.extra or {}).get("review_revision_count", 0))
+        if needs_standard_revision(list(scores.values())) and \
+                revision_count < 2:
+            context.extra["review_revision_count"] = revision_count + 1
+            context.extra["review_distinction_low"] = True
 
         overall = sum(scores.values()) / len(scores) if scores else 0.0
         threshold = ACCEPT_THRESHOLD

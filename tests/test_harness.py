@@ -442,7 +442,10 @@ class TestLegacyBridge:
             if "*" in declared:
                 assert menu.stage_set(name) is None, f"{name} 全阶段工具不应进菜单文件"
                 continue
-            assert menu.stage_set(name) == declared, f"{name} 菜单与代码声明漂移"
+            # M2 起：菜单允许为旧代码声明的超集（新阶段如 PILOT 由菜单扩展，
+            # 原生注册表 stages 已同步）；缺漏旧阶段仍视为漂移。
+            assert declared <= (menu.stage_set(name) or set()), \
+                f"{name} 菜单缺失旧声明阶段（漂移）"
 
 
 # --------------------------------------------------------------------------- #

@@ -24,6 +24,15 @@ llm:
 #              44-72 tok/s 持续吐字节）永不触发，真挂死 300s 无字节即断。
 #   llm_wall — 单次调用总墙钟（生成失控保险丝；实证最长合法调用 1041s）。
 #   stage    — 单阶段墙钟（agent-loop 迭代间检查，超时按工具帽同款收尾）。
+  # 价目兜底（smoke10 检视①收尾；来源 api-docs.deepseek.com 2026-10-08 实取）：
+  # deepseek-v4-pro 人民币/百万tokens——输入(缓存未命中) 空闲4.5/高峰9.0，
+  # 输出 空闲13.5/高峰27.0；此处按【高峰价×汇率7.1 四舍五入】保守计费
+  # （宁多扣不漏扣；缓存命中价远低，不做抵扣）。切 Flash 时改为下方注释值。
+  pricing:
+    input_per_m: 1.30
+    output_per_m: 3.80
+  # deepseek-flash（V4.1-Flash）高峰折美元备查：input 0.30 / output 1.15
+
 timeouts:
   llm: 300        # chunk 间空闲上限 (seconds)
   llm_wall: 1800  # 单调用总墙钟 (seconds)
@@ -201,3 +210,4 @@ harness:
     branch_tree: false                 # 第三章 §9 top-k 分支树（P1-c）
     code_mode: false                   # 第一章 §11 run_code（第三批）
     fallback_acp: false                # D2 降级开关（与 acp.enabled 双确认）
+    pilot: false                         # 第三章 §8.2 先导实验微阶段（M2）                # D2 降级开关（与 acp.enabled 双确认）

@@ -11,6 +11,7 @@ from haa.stages.exp_spec import ExpSpecStage
 from haa.stages.grade import GradeStage
 from haa.stages.human_review import HumanReviewStage
 from haa.stages.novelty import NoveltyStage
+from haa.stages.pilot import PilotStage
 from haa.stages.refine import RefineStage
 from haa.stages.review import ReviewStage
 from haa.stages.screen import ScreenStage
@@ -33,6 +34,7 @@ __all__ = [
     "GradeStage",
     "ExpSpecStage",
     "ExpFeasibilityStage",
+    "PilotStage",
     "HumanReviewStage",
     "WriteStage",
     "ReviewStage",

@@ -56,6 +56,7 @@ from haa.stages import (
     BaseStage,
     DesignStage,
     ExpFeasibilityStage,
+    PilotStage,
     ExpSpecStage,
     GradeStage,
     HumanReviewStage,
@@ -95,6 +96,7 @@ class StageName(str, Enum):
     REFINE = "REFINE"
     EXP_SPEC = "EXP_SPEC"                # 实验规格设计
     EXP_FEASIBILITY = "EXP_FEASIBILITY"  # 实验可行性检验
+    PILOT = "PILOT"                      # 先导实验微阶段（M2/第三章 §8.2，特性开关 pilot）
     HUMAN_REVIEW = "HUMAN_REVIEW"        # 人工审核关卡（不调用 LLM，暂停 pipeline）
 
 
@@ -115,6 +117,7 @@ _STAGE_TO_STATUS: dict[StageName, CampaignStatus] = {
     StageName.REFINE: CampaignStatus.REFINING,
     StageName.EXP_SPEC: CampaignStatus.EXP_SPECIFYING,
     StageName.EXP_FEASIBILITY: CampaignStatus.EXP_CHECKING,
+    StageName.PILOT: CampaignStatus.EXP_CHECKING,  # 复用可行性检验态（先导属实验检验族）
     StageName.HUMAN_REVIEW: CampaignStatus.AWAITING_HUMAN_REVIEW,
 }
 _STATUS_TO_STAGE: dict[CampaignStatus, StageName] = {
@@ -214,6 +217,7 @@ class Pipeline:
             StageName.REFINE: RefineStage(self.llm, self.config),
             StageName.EXP_SPEC: ExpSpecStage(self.llm, self.config),
             StageName.EXP_FEASIBILITY: ExpFeasibilityStage(self.llm, self.config),
+            StageName.PILOT: PilotStage(self.llm, self.config),
             StageName.HUMAN_REVIEW: HumanReviewStage(self.llm, self.config),
         }
 
@@ -489,6 +493,8 @@ class Pipeline:
             return StageName.EXP_FEASIBILITY
         if stage == StageName.EXP_FEASIBILITY:
             return self._after_exp_feasibility(result, campaign, context)
+        if stage == StageName.PILOT:
+            return self._after_pilot(result, campaign, context)
         if stage == StageName.HUMAN_REVIEW:
             # 正常流程 HumanReviewStage 返回 paused=True → _drive 在此前就暂停了。
             # 走到这里 = 测试/mock 模式（不暂停）→ 直接过到 WRITE。
@@ -589,8 +595,11 @@ class Pipeline:
         major_blockers = [b for b in blockers if b.get("severity") == "major"]
         context.extra["exp_findings"] = blockers  # 供返工使用（同 Lesson 1）
 
-        # PASS：无 fatal/major blocker → 人工审核关卡（approve 后才 WRITE）
+        # PASS：无 fatal/major blocker → 先导实验（特性开关 pilot 开时）
+        # 或直接人工审核关卡（approve 后才 WRITE）
         if not fatal_blockers and not major_blockers:
+            if self.config.harness.feature("pilot"):
+                return StageName.PILOT
             return StageName.HUMAN_REVIEW
 
         max_exp = self.config.pipeline.max_exp_rounds
@@ -685,6 +694,15 @@ class Pipeline:
                 if any(kw in fix for kw in design_level_keywords):
                     return True
         return False
+
+    def _after_pilot(self, result, campaign, context) -> StageName:
+        """PILOT 判决转移（第三章 §8.2）：supported/partially/inconclusive
+        → 人工关卡（inconclusive 携标记供人裁）；not_supported 已在阶段内
+        abort_candidate（_transition 的 ABORT_CANDIDATE 路径记账死因——
+        top-k 分支回退在 P1-c 接入后于此改道）。"""
+        if result.data.get("verdict") == "inconclusive":
+            context.extra["pilot_inconclusive"] = True
+        return StageName.HUMAN_REVIEW
 
     def _after_review(self, result, campaign, context) -> StageName | None:
         """Lesson 3: snapshot the best; cap the refine loop."""

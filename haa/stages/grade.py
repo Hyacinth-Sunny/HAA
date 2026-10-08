@@ -60,9 +60,14 @@ class GradeStage(BaseStage):
         # Default to SOLID when unsure (HM-Pro: don't downgrade on gut feel).
         verdict = _VERDICT_MAP.get(label, GradeVerdict.SOLID)
         cand.grade = verdict
+        # P1-c 分型标注（轻量确定性判定，v2 换 LLM）
+        from haa.branch_duel import classify_paper_type
+        paper_type = classify_paper_type(
+            cand.title, cand.rationale, cand.positive_claim)
         out = {
             "grade": verdict.value,
             "rationale": str(data.get("rationale", "")),
+            "paper_type": paper_type,
             "anchor_diff": data.get("anchor_diff"),
             "trace": result.messages,
         }

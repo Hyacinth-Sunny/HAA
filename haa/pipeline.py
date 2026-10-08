@@ -793,6 +793,11 @@ class Pipeline:
             # 尚无生产者，字段先行占位）
             record["structure_fingerprint"] = fingerprint
         kills.append(record)
+        # P1-c：分支树同步标记（feature 开时）
+        tree = (context.extra or {}).get("branch_tree")
+        if tree is not None and cand is not None:
+            tree.kill_branch(cand.slug, stage=stage_name,
+                             reason=record.get("reason", ""))
 
     @staticmethod
     def _extract_kill_evidence(result_data: dict) -> str:

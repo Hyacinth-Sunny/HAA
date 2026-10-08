@@ -21,6 +21,7 @@ from typing import Any
 from haa.harness.prompt_sections import FLOOR_TOOL_RULES, Section
 from haa.harness.registry import ToolRegistry, ToolSpec
 from haa.harness.tools import exec_bash as bash_mod
+from haa.harness.tools import misc as misc_mod
 from haa.harness.tools import experiment_status as monitor_mod
 from haa.harness.tools import fs_tools
 from haa.harness.tools import sandbox as sandbox_mod
@@ -52,6 +53,7 @@ class NativeServices:
         })
         self.monitor = MonitorService(self.jobs)
         self.sandbox = CommandBlacklist()
+        self.budget_ref = None  # 可注入的预算管理器引用（budget_status 用）
 
     def path_allowed(self, path: str) -> bool:
         p = Path(path).expanduser()
@@ -239,6 +241,24 @@ def apply_native_tools(registry: ToolRegistry, *, allowed_roots: tuple[Path, ...
             parameters=schema, stages=stages, handler=handler,
             guardrails=guardrails, source="harness.tools.native",
         ))
+    misc_handlers = misc_mod.make_handlers(services)
+    additions += [
+        ("glob", {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string",
+                            "description": "Filename pattern, e.g. '*.md' or 'exp_*.py'."},
+                "max_results": {"type": "integer",
+                                "description": "Cap on matches (<=500, default 200)."},
+            },
+            "required": ["pattern"],
+        }, misc_handlers["glob"], "*", {}),
+        ("budget_status", {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        }, misc_handlers["budget_status"], (), {}),
+    ]
     for name, schema, handler, stages, guardrails in additions:
         registry.unregister(name)
         registry.register(ToolSpec(

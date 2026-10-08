@@ -293,11 +293,12 @@ class BaseStage:
         )
         # M1 原生接管：五个底层工具的原生实现替换旧 handler（模型可见
         # 契约不变），新增 job/ssh/监控五件；命令黑名单挂入检查链。
-        apply_native_tools(
+        native_services = apply_native_tools(
             harness_registry,
             allowed_roots=(legacy_registry.campaigns_dir,),
             ssh_profiles=ssh_profiles,
         )
+        native_services.budget_ref = lambda: getattr(self.llm, "budget", None)
         loop = AgentLoop(self.llm, harness_registry, event_sink=getattr(self.llm, "event_sink", None))
         if self.config is not None:
             loop.tool_result_max_chars = self.config.tools.agent_result_max_chars

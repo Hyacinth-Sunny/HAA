@@ -62,3 +62,35 @@
   "attack_plan": "最可能的失败点"
 }
 ```
+
+
+## ⛓ 概念档案输出（P1-b 新增——必填）
+你的输出 JSON 必须包含顶层字段 "concepts"（概念卡数组）和
+"section_concepts"（章节-概念映射表）。格式：
+```json
+{
+  "concepts": [
+    {
+      "concept_id": "C1",
+      "name": "范围事务",
+      "math_formulation": "$\\text{Txn}(r, w)$ …（LaTeX 必填）",
+      "code_refs": [{"repo": "…", "path": "…", "symbol": "…"}],
+      "dependencies": ["C2"],
+      "status": "defined | assumed | imported",
+      "provenance": "锚点/候选#3/文献[12]"
+    }
+  ],
+  "section_concepts": {
+    "abstract": ["C1"],
+    "intro": ["C1", "C2"],
+    "background": ["C3"],
+    "method": ["C1", "C2", "C4"]
+  }
+}
+```
+**硬性校验（代码拦截，不靠劝说）**：
+- math_formulation 必填——空=提名式定义，直接打回；
+- code_refs 空时 status 必须 defined 或 imported；
+- dependencies 引用的 ID 必须在 concepts 集合内；
+- 依赖图不得有环。
+原子概念判定：更小的单元是否还有独立的数学表述？没有则已到原子。

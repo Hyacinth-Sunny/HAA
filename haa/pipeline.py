@@ -125,6 +125,14 @@ _STATUS_TO_STAGE: dict[CampaignStatus, StageName] = {
 }
 
 
+def _make_settlement_log(pipeline):
+    """结算事件日志：与主管线共享 sink（如有）。"""
+    from haa.harness.session_log import SessionEventLog, _RecordingSink
+    llm = getattr(pipeline, "llm", None)
+    sink = getattr(llm, "event_sink", None) or _RecordingSink()
+    return SessionEventLog(sink)
+
+
 class Pipeline:
     """Drive stages to completion for one campaign.
 
@@ -397,6 +405,18 @@ class Pipeline:
             next_stage = self._transition(stage, result, campaign, context)
             if campaign.is_terminal:
                 break
+
+            # M-c 结算观测层（feature settlement 开时启用；关=零行为变化）
+            if self.config.harness.feature("settlement"):
+                from haa.settlement import SettlementManager
+                sm = SettlementManager(
+                    session_log=getattr(self, "_settlement_log", None) or
+                    _make_settlement_log(self))
+                sm.settle(stage.value, context, result.data or {},
+                          campaign_id=campaign.id)
+                if sm.needs_merge(context):
+                    sm.merge_oldest(context, campaign_id=campaign.id)
+                self._settlement_log = sm.session_log
 
             # Post-stage checkpoint: persist the folded context.
             self._persist(campaign, context, f"{stage.value}:done")

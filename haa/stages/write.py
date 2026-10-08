@@ -29,7 +29,7 @@ class WriteStage(BaseStage):
             verify_passed=context.verify_passed,
             extra=context.extra,
             brief=context.brief,
-        ) + self._brief_block(context.brief)
+        ) + self._brief_block(context.brief) + self._concept_slice_block(context)
         result = self._run_agent(
             prompt,
             stage_name=self.name,
@@ -44,3 +44,22 @@ class WriteStage(BaseStage):
         paper["self_negation_scan"] = data.get("self_negation_scan", []) or []
         paper["trace"] = result.messages
         return StageResult.continue_(**paper)
+
+    def _concept_slice_block(self, context):
+        """概念档案切片注入（P1-b WRITE 消费侧）。"""
+        from haa.concept_archive import (ConceptCard, render_concept_block,
+                                          section_slices)
+        raw = (context.extra or {}).get("concepts") or []
+        section_map = (context.extra or {}).get("section_concepts") or {}
+        if not raw:
+            return ""
+        try:
+            cards = [ConceptCard(**{k: v for k, v in c.items()
+                                    if k in ConceptCard.model_fields})
+                     for c in raw if isinstance(c, dict)]
+        except Exception:  # noqa: BLE001
+            cards = []
+        if not cards:
+            return ""
+        # 按章节映射提取全部可能章节的切片（v1 注入全部概念，章节过滤 v2）
+        return "\n\n" + render_concept_block(cards)

@@ -167,9 +167,16 @@ needs_container = pytest.mark.skipif(
 
 def test_15_docker_unavailable_fails_closed():
     ds = DockerSandbox()
-    ds._probe_cache["probe"] = ("", "")  # 预置不可用结论
-    with pytest.raises(ToolError, match="SANDBOX_UNAVAILABLE"):
-        ds.run("echo hi", "/tmp")
+    old = ds._probe_cache.get("probe")
+    try:
+        ds._probe_cache["probe"] = ("", "")  # 预置不可用结论
+        with pytest.raises(ToolError, match="SANDBOX_UNAVAILABLE"):
+            ds.run("echo hi", "/tmp")
+    finally:  # 类级缓存必须还原，否则污染后续容器用例
+        if old is None:
+            ds._probe_cache.pop("probe", None)
+        else:
+            ds._probe_cache["probe"] = old
 
 
 def test_16_probe_verdict_cached(monkeypatch):

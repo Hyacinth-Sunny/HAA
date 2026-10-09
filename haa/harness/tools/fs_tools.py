@@ -25,8 +25,25 @@ DEFAULT_READ_MAX_BYTES = 30_000
 DEFAULT_READ_MAX_LINES = 2000
 
 
-def _resolve(path: str) -> Path:
-    return Path(path).expanduser()
+def _resolve(path: str, *, sandbox_root: Path | None = None) -> Path:
+    """解析文件路径——锚定沙箱根+出界拒绝（安全修复 2026-10-09）。
+
+    GPT-6.1-Sol /init 发现相对路径逃逸。修复两层：
+    1. 相对路径锚定到 sandbox_root（= campaigns 目录）
+    2. resolve 后校验仍落在 sandbox_root 内（`..` 穿越/符号链接拒绝）
+    """
+    p = Path(path).expanduser()
+    if not p.is_absolute() and sandbox_root is not None:
+        p = sandbox_root / p
+    resolved = p.resolve()
+    if sandbox_root is not None:
+        root = sandbox_root.resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            raise ToolError(
+                f"sandbox violation: {path!r} resolves outside {root}")
+    return resolved
 
 
 def _read_text_strict(path: Path) -> str:
@@ -93,7 +110,8 @@ def make_read_file(services):
         raw = str(args.get("path", "")).strip()
         if not raw:
             raise ToolError("read_file: 'path' must be non-empty")
-        path = _resolve(raw)
+        path = _resolve(raw, sandbox_root=services.allowed_roots[0]
+                        if services.allowed_roots else None)
         if not path.exists():
             raise ToolError(f"FS_NOT_FOUND: {raw} does not exist")
         if path.is_dir():
@@ -128,7 +146,8 @@ def make_write_file(services):
             raise ToolError("write_file: 'path' must be non-empty")
         if not isinstance(content, str):
             raise ToolError("write_file: 'content' must be a string")
-        path = _resolve(raw)
+        path = _resolve(raw, sandbox_root=services.allowed_roots[0]
+                        if services.allowed_roots else None)
         existed = path.exists()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content.encode("utf-8"))

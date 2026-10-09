@@ -163,6 +163,9 @@ class Project(BaseModel):
     # HOLD fields (batch 18-1 R1: HOLD≠MORIBUND)
     hold_reason: str = ""   # assist_hold | hold_detected | environment_issue
     hold_detail: str = ""   # stage/轮次/最近命令
+    # B3 批次18-2：resume 收下的 HOLD 注记（用户观察或 assist 三要素）——
+    # 重驱 P2 时注入 DebugSession 的 assist_context 段。最新 resume 生效。
+    assist_note: str = ""
 
     # P3 outputs — populated by _run_p3_batch (v0.9).
     p3_paper_dir: str = ""  # LaTeX paper directory

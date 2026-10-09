@@ -276,7 +276,9 @@ def check_hold_flag(campaign_id: str, *, store=None,
     if store is not None:
         camp = store.get_campaign(campaign_id)
         if camp is not None:
-            if str(getattr(getattr(camp, "status", None), "value", "")) == "HOLD":
+            # B2 批次18-2：CampaignStatus 枚举值为小写（"hold"）——原比较大写
+            # "HOLD" 双重失效（枚举无此字面量，永假）。
+            if str(getattr(getattr(camp, "status", None), "value", "")).lower() == "hold":
                 return True
     return False
 

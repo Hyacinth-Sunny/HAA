@@ -317,14 +317,13 @@ def test_a5_hold_resumed_event(tmp_path, monkeypatch):
 
     camps = _isolate_campaigns_dir(monkeypatch, tmp_path)
     store = StateStore(tmp_path / "t.db")
-    # 注意：project_resume 用 main.py 的模块级 StateStore 绑定（非函数内
-    # import），补丁必须打在 haa.cli.main 命名空间——打 haa.state 只对
-    # call-time import 生效（B1 改走 _store() 后目标随之调整）。
-    monkeypatch.setattr("haa.cli.main.StateStore",
-                        lambda *a, **kw: store)
+    # B1 后 resume 走 _store() helper——补丁打在 haa.cli.main 命名空间
+    # （call-time 全局查找，导入顺序无关）。
+    monkeypatch.setattr("haa.cli.main._store", lambda: store)
     brief = Brief(title="T", problem_area="P")
     camp = store.create_campaign(brief)
-    proj = Project(id="proj_a5", brief=brief)
+    proj = Project(id="proj_a5", brief=brief,
+                   selected_precursor_campaign_id=camp.id)
     store.save_project(proj)
 
     from haa.p2revise import set_hold_flag
@@ -339,3 +338,194 @@ def test_a5_hold_resumed_event(tmp_path, monkeypatch):
     resumed = [e for e in events if e.event_type == "hold_resumed"]
     assert len(resumed) == 1
     assert (resumed[0].cost_usd or 0) == 0
+
+
+# ========== B1: HOLD 闭环（CLI 三处：scoping / _store helper / 状态转移） ==========
+
+def _cli_env(tmp_path, monkeypatch):
+    """B 组 CLI 测试环境：隔离 store + 旗标目录。"""
+    from haa.state import StateStore
+
+    camps = _isolate_campaigns_dir(monkeypatch, tmp_path)
+    store = StateStore(tmp_path / "t.db")
+    monkeypatch.setattr("haa.cli.main._store", lambda: store)
+    return store, camps
+
+
+def _mk_proj_with_camp(store, brief, proj_id):
+    from haa.models import Project
+
+    camp = store.create_campaign(brief)
+    proj = Project(id=proj_id, brief=brief,
+                   selected_precursor_campaign_id=camp.id)
+    store.save_project(proj)
+    return proj, camp
+
+
+def test_b1_hold_scoped_to_selected_campaign(tmp_path, monkeypatch):
+    """hold 只作用于关联 campaign——多项目库中 hold A 不影响 B。"""
+    from typer.testing import CliRunner
+
+    store, camps = _cli_env(tmp_path, monkeypatch)
+    brief = Brief(title="T", problem_area="P")
+    proj_a, camp_a = _mk_proj_with_camp(store, brief, "projB_A")
+    proj_b, camp_b = _mk_proj_with_camp(store, brief, "projB_B")
+
+    from haa.cli.main import app
+    runner = CliRunner()
+    r = runner.invoke(app, ["project", "hold", "projB_A",
+                            "--note", "observed stall"])
+    assert r.exit_code == 0, r.output
+
+    assert (camps / camp_a.id / "HOLD").exists()      # A 的旗标在
+    assert not (camps / camp_b.id / "HOLD").exists()  # B 不受影响
+    # 状态入库
+    a = store.get_project(proj_a.id)
+    b = store.get_project(proj_b.id)
+    assert a.status == ProjectStatus.HOLD
+    assert b.status != ProjectStatus.HOLD
+    # 旗标内容=用户注记
+    assert "observed stall" in (camps / camp_a.id / "HOLD").read_text(
+        encoding="utf-8")
+
+
+def test_b1_hold_no_association_errors(tmp_path, monkeypatch):
+    """无关联 campaign → 报错退出（不碰任何旗标）。"""
+    from typer.testing import CliRunner
+
+    from haa.models import Project
+
+    store, camps = _cli_env(tmp_path, monkeypatch)
+    brief = Brief(title="T", problem_area="P")
+    proj = Project(id="projB_no", brief=brief)  # 无 selected
+    store.save_project(proj)
+
+    from haa.cli.main import app
+    runner = CliRunner()
+    r = runner.invoke(app, ["project", "hold", "projB_no"])
+    assert r.exit_code == 1
+    assert "no associated campaign" in r.output
+    # 全库零旗标
+    assert not list(camps.rglob("HOLD"))
+
+
+def test_b1_resume_transitions_and_event(tmp_path, monkeypatch):
+    """DB 状态转移 IN_PROGRESS→HOLD→IN_PROGRESS + hold_resumed 事件。"""
+    from typer.testing import CliRunner
+
+    from haa.models import ProjectStatus
+
+    from haa.cli.main import app
+
+    store, camps = _cli_env(tmp_path, monkeypatch)
+    brief = Brief(title="T", problem_area="P")
+    proj, camp = _mk_proj_with_camp(store, brief, "projB_R")
+    proj.status = ProjectStatus.IN_PROGRESS
+    store.save_project(proj)
+
+    runner = CliRunner()
+    runner.invoke(app, ["project", "hold", "projB_R", "--note", "fix ffmpeg"])
+    assert store.get_project(proj.id).status == ProjectStatus.HOLD
+
+    r = runner.invoke(app, ["project", "resume", "projB_R"])
+    assert r.exit_code == 0, r.output
+    after = store.get_project(proj.id)
+    assert after.status == ProjectStatus.IN_PROGRESS   # HOLD→IN_PROGRESS
+    assert after.assist_note == "fix ffmpeg"           # 注记入库（B3）
+    assert not (camps / camp.id / "HOLD").exists()     # 旗标已清
+    events = store.list_events(proj.id)
+    resumed = [e for e in events if e.event_type == "hold_resumed"]
+    assert len(resumed) == 1
+    assert resumed[0].payload.get("note_injected") is True
+    assert resumed[0].payload.get("status_transitioned") is True
+
+
+def test_b1_resume_without_hold_is_noop(tmp_path, monkeypatch):
+    """无 HOLD 旗标且状态非 HOLD → 警告退出，不发事件、不动状态。"""
+    from typer.testing import CliRunner
+
+    from haa.cli.main import app
+
+    store, camps = _cli_env(tmp_path, monkeypatch)
+    brief = Brief(title="T", problem_area="P")
+    proj, camp = _mk_proj_with_camp(store, brief, "projB_N")
+
+    runner = CliRunner()
+    r = runner.invoke(app, ["project", "resume", "projB_N"])
+    assert r.exit_code == 0
+    assert "nothing to resume" in r.output
+    assert not [e for e in store.list_events(proj.id)
+                if e.event_type == "hold_resumed"]
+
+
+# ========== B2: check_hold_flag DB 分支（小写枚举值） ==========
+
+def test_b2_check_hold_flag_db_branch():
+    """campaign status="hold"（小写枚举值）→ DB 分支命中；大写存量兼容。"""
+    from haa.p2revise import check_hold_flag
+
+    for value in ("hold", "HOLD"):  # .lower() 比较两种都收
+        fake_store = MagicMock()
+        fake_store.get_campaign.return_value = SimpleNamespace(
+            status=SimpleNamespace(value=value))
+        assert check_hold_flag("c1", store=fake_store,
+                               campaigns_dir="/nonexistent") is True
+    fake_store2 = MagicMock()
+    fake_store2.get_campaign.return_value = SimpleNamespace(
+        status=SimpleNamespace(value="writing"))
+    assert check_hold_flag("c1", store=fake_store2,
+                           campaigns_dir="/nonexistent") is False
+
+
+# ========== B3: 注记注入 assist_context ==========
+
+def test_b3_note_injected_into_fix_material(tmp_path):
+    """assist_context → 修复材料头部包含注记段（提示词组装处注入）。"""
+    from haa.p2.debug_session import DebugConfig, DebugSession
+
+    agent = MagicMock()
+    session = DebugSession(
+        transport=_CrashTransport(),
+        coding_agent=agent,
+        config=DebugConfig(max_hard_error_rounds=1),
+        code_dir=tmp_path / "code",
+        work_dir=tmp_path / "work",
+        campaign_id="c1",
+        assist_context="需要先 sudo apt install ffmpeg",
+    )
+    session.run()
+    material = agent.fix_traceback.call_args[0][0]
+    assert "assist_context" in material
+    assert "sudo apt install ffmpeg" in material
+
+
+def test_b3_controller_passes_assist_note(tmp_path, monkeypatch):
+    """project.assist_note → DebugSession(assist_context=…) 真实接线。"""
+    from haa.models import Project
+    from haa.project_controller import ProjectController
+    from haa.state import StateStore
+
+    cfg = _cfg(tmp_path)
+    store = StateStore(tmp_path / "t.db")
+    brief = Brief(title="T", problem_area="P")
+    proj = Project(id="proj_b3", brief=brief,
+                   assist_note="swap 分区不足，请扩容")
+    store.save_project(proj)
+    ctrl = ProjectController(cfg, store, budget=None, llm=MagicMock())
+
+    captured = {}
+
+    class _FakeSession:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run(self):
+            from haa.p2.debug_session import DebugResult
+            return DebugResult(success=False, phase="phase_a", rounds_a=1,
+                               reason="phase_a_circuit_breaker", error="x")
+
+    import haa.p2.debug_session as ds
+    monkeypatch.setattr(ds, "DebugSession", _FakeSession)
+    monkeypatch.setattr(ctrl, "_build_p2_transport", lambda: MagicMock())
+    ctrl._p2_execute(proj, tmp_path / "code", MagicMock(), tmp_path)
+    assert captured["assist_context"] == "swap 分区不足，请扩容"

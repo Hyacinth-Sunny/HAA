@@ -499,6 +499,7 @@ class ProjectController:
             work_dir=p2_dir / "debug",
             campaign_id=project.id,
             event_sink=self._p2_event_sink(project.id),
+            assist_context=project.assist_note or "",  # B3 注记注入
         )
         return session.run()
 

@@ -110,6 +110,7 @@ class DebugSession:
         work_dir: str | Path,
         campaign_id: str,
         event_sink: Callable[[str, dict], None] | None = None,
+        assist_context: str = "",
     ) -> None:
         self.transport = transport
         self.coding_agent = coding_agent
@@ -119,6 +120,9 @@ class DebugSession:
         self.work_dir.mkdir(parents=True, exist_ok=True)
         self.campaign_id = campaign_id
         self.event_sink = event_sink
+        # B3 批次18-2：HOLD 注记（用户观察或 assist 三要素）——注入修复/
+        # 诊断提示词材料，让编码代理带着上下文修。
+        self.assist_context = assist_context or ""
 
     def _emit(self, event_type: str, payload: dict) -> None:
         """A4 批次18-2：经 event_sink 发事件（无 cost；失败仅记日志）。"""
@@ -347,17 +351,25 @@ class DebugSession:
     #  Coding Agent 交互
     # ------------------------------------------------------------------ #
 
+    def _assist_block(self) -> str:
+        """B3 批次18-2：assist_context 段——拼入传给编码代理的材料头。"""
+        if not self.assist_context.strip():
+            return ""
+        return ("## assist_context（HOLD 注记——修复/诊断时优先对照）\n"
+                + self.assist_context.strip() + "\n\n")
+
     def _request_fix(self, error_log: str) -> None:
-        """请求 Coding Agent 修复 traceback。"""
+        """请求 Coding Agent 修复 traceback（B3：assist_context 前置注入）。"""
         try:
-            self.coding_agent.fix_traceback(error_log)
+            self.coding_agent.fix_traceback(self._assist_block() + error_log)
         except Exception as exc:
             logger.error("Coding agent fix_traceback failed: %s", exc)
 
     def _request_diagnosis(self, metrics: dict, log: str) -> None:
-        """请求 Coding Agent 诊断异常指标并修代码。"""
+        """请求 Coding Agent 诊断异常指标并修代码（B3：同款注入）。"""
         try:
-            self.coding_agent.diagnose_metrics(metrics, log)
+            self.coding_agent.diagnose_metrics(metrics,
+                                               self._assist_block() + log)
         except Exception as exc:
             logger.error("Coding agent diagnose_metrics failed: %s", exc)
 

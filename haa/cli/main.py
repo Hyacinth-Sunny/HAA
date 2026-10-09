@@ -317,25 +317,53 @@ from haa.cli.project import project_app  # noqa: E402
 app.add_typer(project_app, name="project")
 
 
-@project_app.command(name="hold")
-def project_hold(
-    project_id: str = typer.Argument(..., help="Project ID or prefix."),
-    note: str = typer.Option("", "--note", help="User observation note."),
-):
-    """Trigger HOLD (safe pause at next round boundary)."""
-    from haa.p2revise import set_hold_flag, build_assist_request
-    from haa.state import StateStore
-
-    store = StateStore("data/haa.db")
-    projects = store.list_projects()
-    proj = next((p for p in projects if p.id.startswith(project_id)), None)
+def _find_project(store, project_id: str):
+    """按 id 前缀找 project；找不到打印错误并退出。"""
+    proj = next((p for p in store.list_projects()
+                 if p.id.startswith(project_id)), None)
     if proj is None:
         console.print(f"[red]✗[/red] Project {project_id!r} not found")
         raise typer.Exit(1)
-    # 找该项目关联的 campaign（简化：取全部）
-    for camp in store.list_campaigns():
-        set_hold_flag(camp.id, note=note)
-    console.print(f"[yellow]⏸ HOLD set for project {proj.id[:12]}…")
+    return proj
+
+
+def _selected_campaign_id(store, proj) -> str:
+    """B1 批次18-2：project 关联的 campaign id（selected 单选优先，多选次之）。
+
+    取不到关联 → 报错退出——hold/resume 只作用于选定前体的 campaign，
+    禁止全库循环（那会误伤其他 project 的旗标）。
+    """
+    camp_id = proj.selected_precursor_campaign_id
+    if not camp_id:
+        ids = list(getattr(proj, "selected_precursor_campaign_ids", None) or [])
+        camp_id = ids[0] if ids else ""
+    if not camp_id:
+        console.print(
+            f"[red]✗[/red] Project {proj.id[:12]}… has no associated "
+            "campaign (selected_precursor_campaign_id empty) — run "
+            "`haa project approve` first")
+        raise typer.Exit(1)
+    return camp_id
+
+
+@project_app.command(name="hold")
+def project_hold(
+    project_id: str = typer.Argument(..., help="Project ID or prefix."),
+    note: str = typer.Option("", help="User observation note."),
+):
+    """Trigger HOLD (safe pause at next round boundary)."""
+    from haa.models import ProjectStatus
+    from haa.p2revise import set_hold_flag
+
+    store = _store()
+    proj = _find_project(store, project_id)
+    camp_id = _selected_campaign_id(store, proj)
+    set_hold_flag(camp_id, note=note)
+    # B1 批次18-2：HOLD 入库（ProjectStatus.HOLD——等人≠等修）
+    proj.status = ProjectStatus.HOLD
+    store.save_project(proj)
+    console.print(f"[yellow]⏸[/yellow] HOLD set for project {proj.id[:12]}… "
+                  f"(campaign {camp_id[:12]}…)")
     if note:
         console.print(f"  Note: {note}")
 
@@ -345,31 +373,39 @@ def project_resume(
     project_id: str = typer.Argument(..., help="Project ID or prefix."),
 ):
     """Resume from HOLD (clears flag, injects user note)."""
-    from haa.p2revise import clear_hold_flag
+    from haa.models import ProjectStatus
+    from haa.p2revise import check_hold_flag, clear_hold_flag
 
-    store = StateStore("data/haa.db")
-    projects = store.list_projects()
-    proj = next((p for p in projects if p.id.startswith(project_id)), None)
-    if proj is None:
-        console.print(f"[red]✗[/red] Project {project_id!r} not found")
-        raise typer.Exit(1)
-    notes = []
-    for camp in store.list_campaigns():
-        note = clear_hold_flag(camp.id)
-        if note:
-            notes.append(note)
-    # A5 批次18-2：resume 成功（有旗标被清）→ hold_resumed 事件落库（无 cost）
-    if notes:
-        try:
-            store.save_event(event_type="hold_resumed", campaign_id=proj.id,
-                             stage="P2",
-                             payload={"cleared_flags": len(notes),
-                                      "note_injected": True})
-        except Exception as exc:  # noqa: BLE001 — 事件失败不阻断 resume
-            console.print(f"[yellow]![/yellow] hold_resumed event failed: {exc}")
-    console.print(f"[green]▶ Resumed project {proj.id[:12]}…")
-    for n in notes:
-        console.print(f"  Injected note: {n[:100]}")
+    store = _store()
+    proj = _find_project(store, project_id)
+    camp_id = _selected_campaign_id(store, proj)
+
+    had_flag = check_hold_flag(camp_id)
+    note = clear_hold_flag(camp_id)
+    if not had_flag and proj.status != ProjectStatus.HOLD:
+        console.print("[yellow]![/yellow] No HOLD flag/status found — "
+                      "nothing to resume")
+        raise typer.Exit(0)
+
+    # B1 批次18-2：HOLD→IN_PROGRESS 状态转移 + 注记入库（B3 注入源）
+    transitioned = proj.status == ProjectStatus.HOLD
+    if transitioned:
+        proj.status = ProjectStatus.IN_PROGRESS
+    # 最新 resume 的注记生效（空注记清空旧值——确定性语义）
+    proj.assist_note = note
+    store.save_project(proj)
+    # A5 批次18-2：resume 成功 → hold_resumed 事件落库（无 cost）
+    try:
+        store.save_event(event_type="hold_resumed", campaign_id=proj.id,
+                         stage="P2",
+                         payload={"campaign_id": camp_id,
+                                  "note_injected": bool(note),
+                                  "status_transitioned": transitioned})
+    except Exception as exc:  # noqa: BLE001 — 事件失败不阻断 resume
+        console.print(f"[yellow]![/yellow] hold_resumed event failed: {exc}")
+    console.print(f"[green]▶[/green] Resumed project {proj.id[:12]}…")
+    if note:
+        console.print(f"  Injected note: {note[:100]}")
 
 
 
@@ -422,9 +458,8 @@ def progress(
 ):
     """Tree summary: campaign → stage → recent steps (from events)."""
     from haa.p2revise import render_progress
-    from haa.state import StateStore
 
-    store = StateStore("data/haa.db")
+    store = _store()
     console.print(render_progress(store, campaign_id or None))
 
 
@@ -435,10 +470,9 @@ def memory_rotate_events(
     root: str = typer.Option("data/memory", help="Unused; kept for CLI compat."),
 ):
     """B4: rotate terminal-campaign events to JSON archive files."""
-    from haa.state import StateStore
     from haa.event_rotation import rotate_events
 
-    store = StateStore("data/haa.db")
+    store = _store()
     rotated = 0
     from haa.config import _PROJECT_ROOT
     campaigns_dir = _PROJECT_ROOT / "data" / "campaigns"

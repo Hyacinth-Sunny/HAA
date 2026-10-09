@@ -38,7 +38,11 @@ class WriteStage(BaseStage):
             max_tool_calls=self._tool_limit(8),
         )
         data = self._parse_json(result.content)
-        paper = {sec: str(data.get(sec, "")) for sec in PAPER_SECTIONS}
+        # A2 批次18-2：六节捕获——results/conclusion 由 WRITE 提示词按取材
+        # 规则产出（有 analysis 写实 / 无则占位串）；缺节仍由
+        # normalize_paper_v2 兜底补占位（pipeline._validate_paper）。
+        paper = {sec: str(data.get(sec, "")) for sec in
+                 PAPER_SECTIONS + ("results", "conclusion")}
         paper["title"] = str(data.get("title", cand.title if cand else ""))
         paper["outline"] = data.get("outline", []) or []
         paper["self_negation_scan"] = data.get("self_negation_scan", []) or []

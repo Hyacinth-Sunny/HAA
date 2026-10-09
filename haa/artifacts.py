@@ -137,6 +137,10 @@ def _stage_payload(stage: str, context: Any) -> Any:
         }
     if stage == "EXP_FEASIBILITY":
         return (getattr(context, "extra", None) or {}).get("exp_findings") or None
+    if stage == "ANALYZE":
+        # A3 批次18-2：ANALYZE 产物落盘（此前 _STAGE_FILES 有映射但 payload
+        # 恒 None → analysis.json 从未写盘）。无 analysis 时跳过。
+        return (getattr(context, "extra", None) or {}).get("analysis") or None
     return None
 
 

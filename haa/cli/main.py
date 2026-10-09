@@ -358,6 +358,15 @@ def project_resume(
         note = clear_hold_flag(camp.id)
         if note:
             notes.append(note)
+    # A5 批次18-2：resume 成功（有旗标被清）→ hold_resumed 事件落库（无 cost）
+    if notes:
+        try:
+            store.save_event(event_type="hold_resumed", campaign_id=proj.id,
+                             stage="P2",
+                             payload={"cleared_flags": len(notes),
+                                      "note_injected": True})
+        except Exception as exc:  # noqa: BLE001 — 事件失败不阻断 resume
+            console.print(f"[yellow]![/yellow] hold_resumed event failed: {exc}")
     console.print(f"[green]▶ Resumed project {proj.id[:12]}…")
     for n in notes:
         console.print(f"  Injected note: {n[:100]}")

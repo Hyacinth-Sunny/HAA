@@ -455,6 +455,8 @@ class ProjectController:
             "rounds_a": debug_result.rounds_a,
             "rounds_b": debug_result.rounds_b,
             "results_dir": str(debug_result.results_dir) if debug_result.results_dir else "",
+            # A1 批次18-2：日志尾部入库——Pipeline._resume 桥接 exp_log 的来源
+            "log": (debug_result.log or "")[-4000:],
         }
 
         # 4. Advance to EA
@@ -496,8 +498,15 @@ class ProjectController:
             code_dir=code_dir,
             work_dir=p2_dir / "debug",
             campaign_id=project.id,
+            event_sink=self._p2_event_sink(project.id),
         )
         return session.run()
+
+    def _p2_event_sink(self, project_id: str):
+        """A4 批次18-2：DebugSession 事件回流适配层（无 cost——对账铁律）。"""
+        def sink(event_type: str, payload: dict) -> None:
+            self._emit_event(event_type, project_id, "P2", payload)
+        return sink
 
     def _p2_analyze(self, project, precursor, debug_result) -> dict:
         """ANALYZE: LLM analyzes experiment results → structured summary."""

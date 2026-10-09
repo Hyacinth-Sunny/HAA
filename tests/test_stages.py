@@ -204,10 +204,13 @@ def test_grade_unknown_label_defaults_to_solid(monkeypatch):
 # --- WRITE -------------------------------------------------------------------
 
 def test_write_extracts_sections(monkeypatch):
-    """v1.0.5 论文前半部：只产 abstract/intro/background/method 四节。"""
+    """六节 schema（批次17 §3.2 + 批次18-2 A2）：四前半部节 + results/
+    conclusion（有 analysis 取材写实，缺省空串由 pipeline normalize 补
+    no-experiment 占位）；eval/related 仍不进 paper。"""
     stage, _ = _stage(WriteStage, monkeypatch, json.dumps({
         "title": "T", "abstract": "a", "intro": "i", "background": "b",
         "method": "m", "eval": "e", "related": "r", "conclusion": "c",
+        "results": "rs",
         "self_negation_scan": [{"phrase": "we do not claim", "action": "revised"}],
     }))
     result = stage.run(_campaign(), StageContext(candidate=_candidate(_campaign()), design={"plan": "p"}))
@@ -215,8 +218,10 @@ def test_write_extracts_sections(monkeypatch):
     assert result.data["background"] == "b"
     assert result.data["title"] == "T"
     assert result.data["self_negation_scan"][0]["action"] == "revised"
-    # 前半部之外的字段不再进入 paper（实验设计属 exp_spec 工件）
-    assert "conclusion" not in result.data
+    # 六节：results/conclusion 随 WRITE 捕获（A2 批次18-2）
+    assert result.data["results"] == "rs"
+    assert result.data["conclusion"] == "c"
+    # 前半部之外的字段仍不进 paper（实验设计属 exp_spec 工件）
     assert "eval" not in result.data
     assert "related" not in result.data
 

@@ -29,7 +29,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from haa.p2.transport import ExecutionTransport, RunResult
 
@@ -93,6 +93,12 @@ class DebugSession:
         DebugSession 的工作目录（下载结果、临时文件）。
     campaign_id:
         用于日志 + run_id 隔离。
+    event_sink:
+        A4 批次18-2：可选事件回流回调 ``(event_type, payload) -> None``。
+        选回调而非直传 store：DebugSession 与存储层解耦（transport /
+        coding_agent 同为注入边界），回调可测试注入且无需知道
+        ``save_event`` 签名。project_controller 注入
+        ``store.save_event`` 适配层。发射失败吞掉——事件层不阻断调试循环。
     """
 
     def __init__(
@@ -103,6 +109,7 @@ class DebugSession:
         code_dir: str | Path,
         work_dir: str | Path,
         campaign_id: str,
+        event_sink: Callable[[str, dict], None] | None = None,
     ) -> None:
         self.transport = transport
         self.coding_agent = coding_agent
@@ -111,6 +118,16 @@ class DebugSession:
         self.work_dir = Path(work_dir)
         self.work_dir.mkdir(parents=True, exist_ok=True)
         self.campaign_id = campaign_id
+        self.event_sink = event_sink
+
+    def _emit(self, event_type: str, payload: dict) -> None:
+        """A4 批次18-2：经 event_sink 发事件（无 cost；失败仅记日志）。"""
+        if self.event_sink is None:
+            return
+        try:
+            self.event_sink(event_type, payload)
+        except Exception as exc:  # noqa: BLE001 — 可观测层不得阻断调试
+            logger.warning("event_sink(%s) failed: %s", event_type, exc)
 
     # ------------------------------------------------------------------ #
     #  主入口
@@ -177,6 +194,12 @@ class DebugSession:
             logger.info("DebugSession %s: triage → %s (%s)",
                         self.campaign_id, verdict["category"],
                         "; ".join(verdict["evidence_lines"][:1]))
+            # A4 批次18-2：每轮分诊事件回流（payload=category+evidence_lines）
+            self._emit("triage_verdict", {
+                "category": verdict["category"],
+                "evidence_lines": list(verdict["evidence_lines"][:3]),
+                "phase": "phase_a", "round": round_num,
+            })
             if verdict["category"] == "assist":
                 # §2.3.4：协助类自动 HOLD（三要素求助请求）
                 set_hold_flag(self.campaign_id,

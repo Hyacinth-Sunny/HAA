@@ -78,6 +78,28 @@
 
 实验设计（评测计划）**不在论文正文里**——它由 EXP_SPEC 阶段产出的 `exp_spec` 工件独立承载（预注册评测计划形态），随前体一起交付。正文 method 末尾**不得**挤入实验承诺、预期数字或"我们将评估…"式段落。
 
+## results / conclusion 的取材规则（六节 schema）
+
+{% if extra and extra.analysis %}
+**本次有实验分析工件**（ANALYZE 阶段产出，见下）——`results` 与 `conclusion` 两节必须写实：
+
+### 实验分析工件（analysis）
+```json
+{{ extra.analysis | tojson(indent=2) }}
+```
+
+- `results`（以 `## 4 Results` 起头）：逐条呈现 analysis 中的主张条目——指标名、数值、效应量、判决（supported / unsupported / inconclusive）。**只允许出现上表工件中存在的数字**，不得编造、外推或"补全"缺失实验。
+- `conclusion`（以 `## 5 Conclusion` 起头）：每条结论必须显式指认其依据的 analysis 主张条目（如"此结论依据 claim_1：指标 X=0.85 判 supported"）；analysis 判为 unsupported 的主张**不得**写成已被验证的结论。
+{% else %}
+**本次无实验分析工件**——`results` 与 `conclusion` 两节各输出占位串：
+
+```
+(no-experiment: 本节需实验数据，尚未产出)
+```
+
+不得编造任何实验数字、图表引用或结论。
+{% endif %}
+
 ## 当前候选（输入）
 
 - 标题：{{ candidate.title if candidate else "(无)" }}
@@ -102,6 +124,8 @@
   "intro": "…（以 ## 1 Introduction 起头）",
   "background": "…（以 ## 2 Background… 起头）",
   "method": "…（以 ## 3 Method 起头，含定理/证明环境）",
+  "results": "…（按上方取材规则：有 analysis 写实 / 无则占位串）",
+  "conclusion": "…（同上）",
   "outline": ["§1 引言：…", "§2 背景：…", "§3.1 系统模型：…", "…"],
   "self_negation_scan": [
     {"phrase": "扫到的措辞", "action": "revised | kept_with_reason", "note": "处置"}

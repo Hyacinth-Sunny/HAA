@@ -312,6 +312,10 @@ class Pipeline:
                 context.candidate = cand
                 context.current_candidate_id = cand.id
 
+        # A1 批次18-2：P2 实验结果桥接——从关联 project 装载 exp_metrics/
+        # exp_log（ANALYZE 消费；无关联降级为空）。
+        self._bridge_exp_results(campaign, context)
+
         if campaign.is_terminal:
             stage = None
         elif campaign.status == CampaignStatus.AWAITING_HUMAN_REVIEW:
@@ -343,6 +347,39 @@ class Pipeline:
                 self._retire(campaign, context, reason="skip_to_novelty:empty_queue")
                 stage = None
         return context, stage
+
+    def _bridge_exp_results(self, campaign, context) -> None:
+        """A1 批次18-2：project.exp_results → context.extra 桥接（生产者补全）。
+
+        按 ``selected_precursor_campaign_id``（或多选清单）找到拥有本
+        campaign 的 project，把 P2 实验产物装载进 ``extra``：
+        ``exp_metrics``（指标 dict）与 ``exp_log``（日志尾部 2000 字符）。
+        取不到关联（纯 P1 campaign / 未进 P2）时降级为空并 warning。
+        """
+        try:
+            owner = None
+            for proj in self.store.list_projects():
+                ids = [proj.selected_precursor_campaign_id] + list(
+                    getattr(proj, "selected_precursor_campaign_ids", None) or [])
+                if campaign.id in ids:
+                    owner = proj
+                    break
+            if owner is None or not getattr(owner, "exp_results", None):
+                logger.warning(
+                    "resume %s: no project exp_results associated — "
+                    "exp_metrics/exp_log left empty", campaign.id)
+                return
+            exp = owner.exp_results
+            context.extra["exp_metrics"] = exp.get("metrics") or {}
+            context.extra["exp_log"] = str(exp.get("log") or "")[-2000:]
+            logger.info(
+                "resume %s: bridged exp_results into extra "
+                "(%d metric keys, log tail %d chars)",
+                campaign.id, len(context.extra["exp_metrics"]),
+                len(context.extra["exp_log"]))
+        except Exception as exc:  # noqa: BLE001 — 桥接失败不阻断恢复
+            logger.warning("exp_results bridge failed for %s: %s",
+                           campaign.id, exc)
 
     # -- main loop ---------------------------------------------------------
     def _drive(self, campaign, context, stage) -> Campaign:

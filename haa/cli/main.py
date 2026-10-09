@@ -356,6 +356,27 @@ def memory_lint(
 
 app.add_typer(memory_app, name="memory")
 
+@memory_app.command(name="rotate-events")
+def memory_rotate_events(
+    root: str = typer.Option("data/memory", help="Unused; kept for CLI compat."),
+):
+    """B4: rotate terminal-campaign events to JSON archive files."""
+    from haa.state import StateStore
+    from haa.event_rotation import rotate_events
+
+    store = StateStore("data/haa.db")
+    rotated = 0
+    from haa.config import _PROJECT_ROOT
+    campaigns_dir = _PROJECT_ROOT / "data" / "campaigns"
+    for d in campaigns_dir.iterdir():
+        if d.is_dir() and d.name != "_rejected":
+            cid = d.name
+            camp = store.get_campaign(cid)
+            if camp is not None:
+                n = rotate_events(store, cid, campaigns_dir=campaigns_dir)
+                rotated += n
+    console.print(f"[green]✓[/green] Rotated {rotated} events total.")
+
 
 # --------------------------------------------------------------------------- #
 #  Brief preflight sub-app (大修批次4/P1-a：简报质量预检，软门)

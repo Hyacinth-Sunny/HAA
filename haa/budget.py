@@ -40,6 +40,11 @@ from haa.state import StateStore
 # REVIEW/REFINE loops) is gated. P1_DIAGNOSTIC is ungated because the project
 # is already MORIBUND — suppressing the diagnostic would hide the cause of
 # death from the user.
+# ⚠ 全局帽执法盲区（smoke11 检视 P0-2）：
+# 以下豁免阶段的 pre_spend(gate=False) 不查 campaign/global 帽——
+# smoke11 全局 $5 帽被跑到 $9.79 零拦截的根因即此（WRITE/GRADE 占大头）。
+# 语义：HM-Pro 遗产——"关键产出阶段不允许被预算杀"。
+# 后续如需收紧：①从豁免名单移除 ②或加"软帽"（超帽告警不杀）。
 UNGATED_STAGES: frozenset[str] = frozenset({
     "GRADE", "WRITE", "HUMAN_REVIEW",
     "P1_DIAGNOSTIC", "P2_ANALYZE", "P2_DIAGNOSTIC",

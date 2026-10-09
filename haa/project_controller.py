@@ -432,8 +432,20 @@ class ProjectController:
         # 2. EXECUTE (DebugSession)
         debug_result = self._p2_execute(project, code_dir, coding_agent, p2_dir)
         if not debug_result.success:
-            logger.warning("project %s: P2 EXECUTE failed → MORIBUND", project.id)
-            return self._set_moribund_p2(project, debug_result, precursor)
+            # R1 批次18-1：按 reason 分流——HOLD≠MORIBUND
+            reason = debug_result.reason or ""
+            if reason in ("assist_hold", "hold_detected"):
+                logger.info("project %s: P2 HOLD (reason=%s) — waiting for user",
+                            project.id, reason)
+                return self._set_hold_p2(project, debug_result, precursor,
+                                         reason)
+            elif reason == "environment_issue":
+                logger.info("project %s: P2 environment issue — HOLD for reconfig",
+                            project.id)
+                return self._set_hold_p2(project, debug_result, precursor, reason)
+            else:
+                logger.warning("project %s: P2 EXECUTE failed → MORIBUND", project.id)
+                return self._set_moribund_p2(project, debug_result, precursor)
 
         # 3. ANALYZE
         analysis = self._p2_analyze(project, precursor, debug_result)
@@ -514,6 +526,45 @@ class ProjectController:
         except Exception as exc:
             logger.warning("P2 ANALYZE LLM call failed: %s", exc)
             return {"error": str(exc), "metrics": debug_result.metrics}
+
+    def _set_hold_p2(self, project, debug_result, precursor, reason) -> Project:
+        """R1 批次18-1：P2 HOLD（等人≠等修）——assist/hold/environment 进此路。"""
+        from haa.models import ProjectStatus
+        project.status = ProjectStatus.HOLD
+        project.hold_reason = reason
+        project.hold_detail = (
+            f"stage=p2_execute phase={debug_result.phase} "
+            f"rounds_a={debug_result.rounds_a} reason={reason}")
+        # 事件（R5）：hold_entered + assist_request
+        self._emit_event("hold_entered", project.id, "P2", {
+            "stage": "p2_execute", "phase": debug_result.phase,
+            "rounds": debug_result.rounds_a, "reason": reason,
+            "last_command": (debug_result.log or "")[-200:] if debug_result.log else "",
+        })
+        if reason == "assist_hold":
+            self._emit_event("assist_request", project.id, "P2", {
+                "detail": debug_result.error or "assistance needed",
+                "action": "check environment/config",
+                "evidence": (debug_result.log or "")[-300:] if debug_result.log else "",
+            })
+        elif reason == "environment_issue":
+            self._emit_event("triage_verdict", project.id, "P2", {
+                "category": "environment",
+                "evidence_lines": [(debug_result.log or "")[-300:]],
+            })
+        self.store.save_project(project)
+        logger.info("project %s: P2 HOLD set (reason=%s)", project.id, reason)
+        return project
+
+    def _emit_event(self, event_type: str, campaign_id: str, stage: str,
+                    payload: dict) -> None:
+        """R5 批次18-1：新事件发射（不带 cost_usd——对账铁律）。"""
+        try:
+            self.store.save_event(
+                event_type=event_type, campaign_id=campaign_id,
+                stage=stage, payload=payload)
+        except Exception as exc:
+            logger.warning("event emit failed (%s): %s", event_type, exc)
 
     def _set_moribund_p2(self, project, debug_result, precursor) -> Project:
         """P2 MORIBUND: experiment failed → diagnostic + MORIBUND state."""

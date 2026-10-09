@@ -316,7 +316,11 @@ class Pipeline:
             stage = None
         elif campaign.status == CampaignStatus.AWAITING_HUMAN_REVIEW:
             # 人工审核通过（haa approve）后从 WRITE 继续。
-            stage = StageName.WRITE
+            # R2 批次18-1：features.analyze 开时经 ANALYZE（生产入口）。
+            if self.config is not None and self.config.harness.feature("analyze"):
+                stage = StageName.ANALYZE
+            else:
+                stage = StageName.WRITE
         elif campaign.status in _STATUS_TO_STAGE:
             stage = _STATUS_TO_STAGE[campaign.status]
         else:  # QUEUED (or any non -ING state) → start at SEEK.
@@ -512,25 +516,13 @@ class Pipeline:
             return self._after_grade(result, campaign, context)
         if stage == StageName.WRITE:
             context.paper = result.data
+            self._validate_paper(context, campaign, "WRITE")  # R6 校验在回写后
             return StageName.REVIEW
-        # 挂点6：WRITE 产出后六节校验+lint（§3.2/§3.4）
-        if stage in (StageName.WRITE, StageName.REFINE) and context.paper:
-            from haa.p3revise import (normalize_paper_v2, validate_paper_sections,
-                                       lint_readability)
-            context.paper = normalize_paper_v2(context.paper)
-            sec_errors = validate_paper_sections(context.paper)
-            if sec_errors:
-                logger.warning("paper sections incomplete: %s", sec_errors[:3])
-            lint_issues = lint_readability(str(context.paper))
-            if lint_issues:
-                logger.info("readability lint: %d issue(s)", len(lint_issues))
-            context.extra["paper_section_errors"] = sec_errors
-            context.extra["paper_lint_issues"] = lint_issues[:10]
-
         if stage == StageName.REVIEW:
             return self._after_review(result, campaign, context)
         if stage == StageName.REFINE:
             context.paper = result.data
+            self._validate_paper(context, campaign, "REFINE")  # R6 校验新稿
             return StageName.REVIEW
         if stage == StageName.EXP_SPEC:
             context.extra["exp_spec"] = result.data
@@ -538,12 +530,22 @@ class Pipeline:
         if stage == StageName.EXP_FEASIBILITY:
             return self._after_exp_feasibility(result, campaign, context)
         if stage == StageName.PILOT:
+            # R3 批次18-1：PILOT abort（not_supported）→ kill + advance
+            if result.status == StageStatus.ABORT_CANDIDATE:
+                self._record_kill("PILOT", context, result)
+                return self._advance_or_retire(campaign, context,
+                                               result.data.get("reason", ""))
             return self._after_pilot(result, campaign, context)
         if stage == StageName.ANALYZE:
+            # R3 批次18-1：ANALYZE abort（viewpoint_unsupported）→ kill + advance
+            if result.status == StageStatus.ABORT_CANDIDATE:
+                self._record_kill("ANALYZE", context, result)
+                return self._advance_or_retire(campaign, context,
+                                               result.data.get("reason", ""))
             return self._after_analyze(result, campaign, context)
         if stage == StageName.HUMAN_REVIEW:
             # 正常流程 HumanReviewStage 返回 paused=True → _drive 在此前就暂停了。
-            # 走到这里 = 测试/mock 模式（不暂停）→ 过到 WRITE（或 ANALYZE）。
+            # 走到这里 = 测试/mock 模式（生产入口在 _resume 的 R2 分流）。
             if self.config.harness.feature("analyze"):
                 return StageName.ANALYZE
             return StageName.WRITE
@@ -552,6 +554,31 @@ class Pipeline:
         logger.warning("no transition for stage %s (status %s) — retiring", stage, result.status)
         self._retire(campaign, context, reason=f"no_transition:{stage}")
         return None
+
+    def _validate_paper(self, context, campaign, stage_name) -> None:
+        """R6 批次18-1：WRITE/REFINE 后六节校验+lint（事件+不阻塞）。"""
+        if not context.paper:
+            return
+        from haa.p3revise import (lint_readability, normalize_paper_v2,
+                                   validate_paper_sections)
+        context.paper = normalize_paper_v2(context.paper)
+        sec_errors = validate_paper_sections(context.paper)
+        lint_issues = lint_readability(str(context.paper))
+        context.extra["paper_section_errors"] = sec_errors
+        context.extra["paper_lint_issues"] = lint_issues[:10]
+        if sec_errors:
+            logger.warning("paper sections incomplete: %s", sec_errors[:3])
+        if lint_issues:
+            logger.info("readability lint: %d issue(s)", len(lint_issues))
+        try:
+            self.store.save_event(
+                event_type="paper_section_check",
+                campaign_id=campaign.id, stage=stage_name,
+                payload={"errors": sec_errors,
+                         "lint_count": len(lint_issues),
+                         "lint_head": [i.get("type", "") for i in lint_issues[:5]]})
+        except Exception:
+            pass
 
     # -- per-stage transitions --------------------------------------------
     def _after_seek(self, result, campaign, context) -> StageName | None:
@@ -756,6 +783,16 @@ class Pipeline:
         """ANALYZE 转移（§3.1）：结果写入 extra 供 WRITE 消费。"""
         context.extra["analysis"] = result.data.get("analysis", {})
         context.extra["analysis_verdict"] = result.data.get("viewpoint_verdict", "")
+        # R5 批次18-1：analyze_done 事件（不带 cost_usd）
+        try:
+            self.store.save_event(
+                event_type="analyze_done", campaign_id=campaign.id,
+                stage="ANALYZE",
+                payload={"verdict": result.data.get("viewpoint_verdict", ""),
+                         "supported": len(result.data.get("claims_supported", [])),
+                         "unsupported": len(result.data.get("claims_unsupported", []))})
+        except Exception:
+            pass
         return StageName.WRITE
 
     def _after_review(self, result, campaign, context) -> StageName | None:

@@ -94,6 +94,19 @@ class IdeaEntity(BaseModel):
             raise ValueError("kill_reason is required when status=killed")
         return self
 
+    @field_validator("kill_reason")
+    @classmethod
+    def _kill_reason_enum(cls, v: str) -> str:
+        """批次18 挂点6：kill_reason 枚举软校验（存量自由文本兼容）。"""
+        if not v:
+            return v
+        from haa.p2revise import validate_kill_reason
+        if not validate_kill_reason(v):
+            import logging as _log
+            _log.getLogger("haa.memory_bank").warning(
+                "kill_reason %r is not a standard enum (batch 18 soft check)", v)
+        return v  # 软校验：不拒绝存量，仅告警新数据非枚举
+
     _check_date_v = field_validator("date")(_check_date)
 
 

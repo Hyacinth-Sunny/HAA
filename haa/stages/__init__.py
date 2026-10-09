@@ -4,6 +4,7 @@ The pipeline (haa/pipeline.py) owns all control flow — a stage returns a
 :class:`StageResult` and never decides the next stage itself.
 """
 
+from haa.stages.analyze import AnalyzeStage
 from haa.stages.base import BaseStage, StageContext, StageResult, StageStatus
 from haa.stages.design import DesignStage
 from haa.stages.exp_feasibility import ExpFeasibilityStage
@@ -21,6 +22,7 @@ from haa.stages.write import WriteStage
 
 __all__ = [
     # interface types
+    "AnalyzeStage",
     "BaseStage",
     "StageContext",
     "StageResult",

@@ -144,12 +144,21 @@ class DebugSession:
     # ------------------------------------------------------------------ #
 
     def _run_phase_a(self) -> DebugResult:
-        """循环：deploy → run → 检查崩溃 → CC 修 → 重试。"""
+        """循环：deploy → run → 分诊 → 修复/重试（批次18 接线：分诊+HOLD）。"""
+        from haa.p2revise import triage_failure, check_hold_flag, set_hold_flag, build_assist_request
         for round_num in range(1, self.config.max_hard_error_rounds + 1):
+            # 轮间检查点（§2.3.2）：HOLD 标志命中→当前轮跑完安全退出
+            if check_hold_flag(self.campaign_id):
+                logger.info("DebugSession %s: HOLD detected at round %d — safe exit",
+                            self.campaign_id, round_num)
+                return DebugResult(
+                    success=False, phase="phase_a", rounds_a=round_num,
+                    reason="hold_detected",
+                    error="User HOLD detected between rounds")
+
             run_result = self._execute_round(round_num, phase="a")
 
             if not run_result.crashed:
-                # Code runs without crashing → Phase A passed.
                 logger.info(
                     "DebugSession %s: Phase A passed in %d round(s)",
                     self.campaign_id, round_num,
@@ -163,7 +172,31 @@ class DebugSession:
                     results_dir=run_result.results_dir,
                 )
 
-            # Hard error → CC fix.
+            # 批次18 挂点1：根因分诊器（§2.2——先分诊再修复）
+            verdict = triage_failure(run_result.combined_log)
+            logger.info("DebugSession %s: triage → %s (%s)",
+                        self.campaign_id, verdict["category"],
+                        "; ".join(verdict["evidence_lines"][:1]))
+            if verdict["category"] == "assist":
+                # §2.3.4：协助类自动 HOLD（三要素求助请求）
+                set_hold_flag(self.campaign_id,
+                              note=build_assist_request(verdict))
+                logger.warning("DebugSession %s: auto-HOLD (assist)", self.campaign_id)
+                return DebugResult(
+                    success=False, phase="phase_a", rounds_a=round_num,
+                    reason="assist_hold",
+                    error=build_assist_request(verdict))
+            if verdict["category"] == "environment":
+                # §2.2.1：环境类→退出循环走环境重配
+                logger.warning("DebugSession %s: environment issue detected",
+                               self.campaign_id)
+                return DebugResult(
+                    success=False, phase="phase_a", rounds_a=round_num,
+                    reason="environment_issue",
+                    error=run_result.combined_log[-500:])
+            # code/design → 修复循环继续
+
+            # Hard error → fix.
             logger.warning(
                 "DebugSession %s: Phase A round %d crashed (rc=%d), requesting fix",
                 self.campaign_id, round_num, run_result.exit_code,

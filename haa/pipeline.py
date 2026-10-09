@@ -57,6 +57,7 @@ from haa.stages import (
     DesignStage,
     ExpFeasibilityStage,
     PilotStage,
+    AnalyzeStage,
     ExpSpecStage,
     GradeStage,
     HumanReviewStage,
@@ -96,7 +97,8 @@ class StageName(str, Enum):
     REFINE = "REFINE"
     EXP_SPEC = "EXP_SPEC"                # 实验规格设计
     EXP_FEASIBILITY = "EXP_FEASIBILITY"  # 实验可行性检验
-    PILOT = "PILOT"                      # 先导实验微阶段（M2/第三章 §8.2，特性开关 pilot）
+    PILOT = "PILOT"
+    ANALYZE = "ANALYZE"                # P2 实验结果分析+观点终审（修订§3.1，批次18）                      # 先导实验微阶段（M2/第三章 §8.2，特性开关 pilot）
     HUMAN_REVIEW = "HUMAN_REVIEW"        # 人工审核关卡（不调用 LLM，暂停 pipeline）
 
 
@@ -117,7 +119,8 @@ _STAGE_TO_STATUS: dict[StageName, CampaignStatus] = {
     StageName.REFINE: CampaignStatus.REFINING,
     StageName.EXP_SPEC: CampaignStatus.EXP_SPECIFYING,
     StageName.EXP_FEASIBILITY: CampaignStatus.EXP_CHECKING,
-    StageName.PILOT: CampaignStatus.EXP_CHECKING,  # 复用可行性检验态（先导属实验检验族）
+    StageName.PILOT: CampaignStatus.EXP_CHECKING,
+    StageName.ANALYZE: CampaignStatus.WRITING,  # 复用写作中态（分析属产出层）  # 复用可行性检验态（先导属实验检验族）
     StageName.HUMAN_REVIEW: CampaignStatus.AWAITING_HUMAN_REVIEW,
 }
 _STATUS_TO_STAGE: dict[CampaignStatus, StageName] = {
@@ -226,6 +229,7 @@ class Pipeline:
             StageName.EXP_SPEC: ExpSpecStage(self.llm, self.config),
             StageName.EXP_FEASIBILITY: ExpFeasibilityStage(self.llm, self.config),
             StageName.PILOT: PilotStage(self.llm, self.config),
+            StageName.ANALYZE: AnalyzeStage(self.llm, self.config),
             StageName.HUMAN_REVIEW: HumanReviewStage(self.llm, self.config),
         }
 
@@ -509,6 +513,20 @@ class Pipeline:
         if stage == StageName.WRITE:
             context.paper = result.data
             return StageName.REVIEW
+        # 挂点6：WRITE 产出后六节校验+lint（§3.2/§3.4）
+        if stage in (StageName.WRITE, StageName.REFINE) and context.paper:
+            from haa.p3revise import (normalize_paper_v2, validate_paper_sections,
+                                       lint_readability)
+            context.paper = normalize_paper_v2(context.paper)
+            sec_errors = validate_paper_sections(context.paper)
+            if sec_errors:
+                logger.warning("paper sections incomplete: %s", sec_errors[:3])
+            lint_issues = lint_readability(str(context.paper))
+            if lint_issues:
+                logger.info("readability lint: %d issue(s)", len(lint_issues))
+            context.extra["paper_section_errors"] = sec_errors
+            context.extra["paper_lint_issues"] = lint_issues[:10]
+
         if stage == StageName.REVIEW:
             return self._after_review(result, campaign, context)
         if stage == StageName.REFINE:
@@ -521,9 +539,13 @@ class Pipeline:
             return self._after_exp_feasibility(result, campaign, context)
         if stage == StageName.PILOT:
             return self._after_pilot(result, campaign, context)
+        if stage == StageName.ANALYZE:
+            return self._after_analyze(result, campaign, context)
         if stage == StageName.HUMAN_REVIEW:
             # 正常流程 HumanReviewStage 返回 paused=True → _drive 在此前就暂停了。
-            # 走到这里 = 测试/mock 模式（不暂停）→ 直接过到 WRITE。
+            # 走到这里 = 测试/mock 模式（不暂停）→ 过到 WRITE（或 ANALYZE）。
+            if self.config.harness.feature("analyze"):
+                return StageName.ANALYZE
             return StageName.WRITE
 
         # Unknown stage or RETRY-without-progress → stop safely.
@@ -729,6 +751,12 @@ class Pipeline:
         if result.data.get("verdict") == "inconclusive":
             context.extra["pilot_inconclusive"] = True
         return StageName.HUMAN_REVIEW
+
+    def _after_analyze(self, result, campaign, context) -> StageName:
+        """ANALYZE 转移（§3.1）：结果写入 extra 供 WRITE 消费。"""
+        context.extra["analysis"] = result.data.get("analysis", {})
+        context.extra["analysis_verdict"] = result.data.get("viewpoint_verdict", "")
+        return StageName.WRITE
 
     def _after_review(self, result, campaign, context) -> StageName | None:
         """Lesson 3: snapshot the best; cap the refine loop."""

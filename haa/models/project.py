@@ -29,14 +29,18 @@ class ProjectStatus(str, Enum):
 
     NOT_STARTED  — Brief submitted, awaiting the human switch (PR phase).
     IN_PROGRESS  — Pipeline running (P1/P2/P3 + human gates blocking).
+    HOLD         — Waiting for user assistance (batch 16 P2-b; HOLD↔RUNNING
+                   legal; distinct from MORIBUND: HOLD=等人, MORIBUND=等修).
     MORIBUND     — Agent refuses to advance; still resumable (Agent's highest
-                   authority — only the user can ABORT).
+                   authority — only the user can ABORT). Narrowed (batch 18):
+                   only code-exhaustion or budget-exhaustion enters MORIBUND.
     COMPLETED    — P3 done + human approved (terminal, user-only).
     ABORTED      — User killed it (terminal, user-only, irrecoverable).
     """
 
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
+    HOLD = "hold"
     MORIBUND = "moribund"
     COMPLETED = "completed"
     ABORTED = "aborted"

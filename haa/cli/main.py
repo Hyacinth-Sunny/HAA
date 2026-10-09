@@ -317,6 +317,53 @@ from haa.cli.project import project_app  # noqa: E402
 app.add_typer(project_app, name="project")
 
 
+@project_app.command(name="hold")
+def project_hold(
+    project_id: str = typer.Argument(..., help="Project ID or prefix."),
+    note: str = typer.Option("", "--note", help="User observation note."),
+):
+    """Trigger HOLD (safe pause at next round boundary)."""
+    from haa.p2revise import set_hold_flag, build_assist_request
+    from haa.state import StateStore
+
+    store = StateStore("data/haa.db")
+    projects = store.list_projects()
+    proj = next((p for p in projects if p.id.startswith(project_id)), None)
+    if proj is None:
+        console.print(f"[red]✗[/red] Project {project_id!r} not found")
+        raise typer.Exit(1)
+    # 找该项目关联的 campaign（简化：取全部）
+    for camp in store.list_campaigns():
+        set_hold_flag(camp.id, note=note)
+    console.print(f"[yellow]⏸ HOLD set for project {proj.id[:12]}…")
+    if note:
+        console.print(f"  Note: {note}")
+
+
+@project_app.command(name="resume")
+def project_resume(
+    project_id: str = typer.Argument(..., help="Project ID or prefix."),
+):
+    """Resume from HOLD (clears flag, injects user note)."""
+    from haa.p2revise import clear_hold_flag
+
+    store = StateStore("data/haa.db")
+    projects = store.list_projects()
+    proj = next((p for p in projects if p.id.startswith(project_id)), None)
+    if proj is None:
+        console.print(f"[red]✗[/red] Project {project_id!r} not found")
+        raise typer.Exit(1)
+    notes = []
+    for camp in store.list_campaigns():
+        note = clear_hold_flag(camp.id)
+        if note:
+            notes.append(note)
+    console.print(f"[green]▶ Resumed project {proj.id[:12]}…")
+    for n in notes:
+        console.print(f"  Injected note: {n[:100]}")
+
+
+
 # --------------------------------------------------------------------------- #
 #  Memory sub-app (大修 M-b：记忆库实体层)
 # --------------------------------------------------------------------------- #
@@ -355,6 +402,24 @@ def memory_lint(
 
 
 app.add_typer(memory_app, name="memory")
+
+# --------------------------------------------------------------------------- #
+#  CLI progress / hold / resume（批次18 挂点4）
+# --------------------------------------------------------------------------- #
+
+@app.command(name="progress")
+def progress(
+    campaign_id: str = typer.Argument("", help="Optional: filter to one campaign."),
+):
+    """Tree summary: campaign → stage → recent steps (from events)."""
+    from haa.p2revise import render_progress
+    from haa.state import StateStore
+
+    store = StateStore("data/haa.db")
+    console.print(render_progress(store, campaign_id or None))
+
+
+
 
 @memory_app.command(name="rotate-events")
 def memory_rotate_events(

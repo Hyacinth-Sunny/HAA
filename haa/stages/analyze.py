@@ -18,16 +18,17 @@ class AnalyzeStage(BaseStage):
     """P2 ANALYZE：分析实验结果，观点终审。"""
 
     name = "ANALYZE"
-    allowed_tools = {"read_file", "calculator"}
+    allowed_tools = {"read_file"}  # R10：calculator 已退役
 
     def run(self, campaign, context):  # noqa: D401
         cand = context.candidate
         if cand is None:
             return StageResult.abort_campaign(reason="ANALYZE: no active candidate")
 
+        # R4 批次18-1：读 exp_metrics/exp_log（原 pilot_metrics 已废弃）
         exp_spec = context.extra.get("exp_spec") or {}
-        metrics = context.extra.get("pilot_metrics") or {}
-        debug_log = context.extra.get("debug_log", "")
+        metrics = context.extra.get("exp_metrics") or context.extra.get("pilot_metrics") or {}
+        debug_log = context.extra.get("exp_log") or context.extra.get("debug_log", "")
 
         prompt = (
             render_prompt(

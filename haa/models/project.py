@@ -160,6 +160,10 @@ class Project(BaseModel):
     exp_code_dir: str = ""  # generated experiment code directory
     exp_results: dict[str, Any] = Field(default_factory=dict)  # metrics + analysis
 
+    # HOLD fields (batch 18-1 R1: HOLD≠MORIBUND)
+    hold_reason: str = ""   # assist_hold | hold_detected | environment_issue
+    hold_detail: str = ""   # stage/轮次/最近命令
+
     # P3 outputs — populated by _run_p3_batch (v0.9).
     p3_paper_dir: str = ""  # LaTeX paper directory
     p3_deliverable_path: str = ""  # final .zip path

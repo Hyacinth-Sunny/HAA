@@ -414,6 +414,12 @@ class Pipeline:
                     _make_settlement_log(self))
                 sm.settle(stage.value, context, result.data or {},
                           campaign_id=campaign.id)
+                # P1-4 心跳：逐 stage 打 pressure（区分"未达阈"vs"坏了"）
+                _pressure = sm.measure_pressure(context)
+                logger.info("settlement heartbeat: stage=%s pressure=%.3f "
+                            "(threshold=%.2f) settlements=%d",
+                            stage.value, _pressure, 0.8,
+                            len((context.extra or {}).get("settlements", {})))
                 if sm.needs_merge(context):
                     sm.merge_oldest(context, campaign_id=campaign.id)
                 self._settlement_log = sm.session_log

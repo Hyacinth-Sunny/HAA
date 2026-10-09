@@ -1,0 +1,64 @@
+# smoke11 冒烟配置——大修六章收官（2026-10-09）
+# 模型: DeepSeek V4.1-Flash（非 Pro，节省时间成本）
+# 四开关全开: anchored_mode+divergence+typed_duel+settlement
+llm:
+  model: "deepseek/deepseek-flash"
+  max_retries: 2
+  api_base: ""
+  api_key_env: "DEEPSEEK_API_KEY"
+  # 第五路异家族外部评审模型（smoke11 检视 P0-1：空=永远 skipped）
+  # 需配一个与主模型不同家族的模型（如 GLM/Claude/GPT）——当前 GLM 仅
+  # Coding Plan 可用（未开通按量），故标注待用户配置后启用
+  sub_agent_model: ""  # TODO(user): 配置异家族模型后取消注释
+  pricing:
+    input_per_m: 0.30
+    output_per_m: 1.15
+    input_per_m_offpeak: 0.15
+    output_per_m_offpeak: 0.60
+
+timeouts:
+  llm: 300
+  llm_wall: 1800
+  stage: 3600
+
+budget:
+  per_campaign: 10.0
+  global_limit: 30.0  # P0-2 修正：原 $5 < per_campaign $10 矛盾；改为 3×cap
+  per_campaign_tokens: 30000000
+  global_tokens: 120000000
+
+pipeline:
+  max_design_rounds: 3
+  max_review_rounds: 3
+  review_accept_threshold: 0.7
+  seek_candidate_count: 3
+  output_candidate_count: 3
+  stage_tool_limits:
+    SEEK: 24
+    NOVELTY: 45
+    SCREEN: 50
+    DESIGN: 50
+    VERIFY: 36
+    GRADE: 5
+    WRITE: 20
+    REVIEW: 2
+    REFINE: 24
+    EXP_SPEC: 26
+    EXP_FEASIBILITY: 22
+
+storage:
+  db_path: "data/haa.db"
+  campaigns_dir: "data/campaigns"
+
+harness:
+  tool_menu: "config/tool_menu.yaml"
+  write_gate_enabled: true
+  features:
+    anchored_mode: true
+    divergence: true
+    typed_duel: true
+    settlement: true
+    branch_tree: false
+    code_mode: false
+    fallback_acp: false
+    pilot: false

@@ -35,6 +35,37 @@ def _cfg(tmp_path, **features):
 
 # ========== R1: HOLD 三出口分流（真实驱动 _run_batch → _p2_execute） ==========
 
+def _drive_run_p2_batch(tmp_path, debug_reason: str):
+    """D3 批次18-2：真驱动 _run_p2_batch（mock 仅限 coding agent/execute
+    进程边界）→ 失败分流路由是真实代码路径。"""
+    from unittest.mock import patch
+
+    from haa.models import Precursor, Project
+    from haa.project_controller import ProjectController
+    from haa.state import StateStore
+
+    cfg = _cfg(tmp_path)
+    store = StateStore(tmp_path / "t.db")
+    brief = Brief(title="T", problem_area="P")
+    precursor = Precursor(campaign_id="cx", candidate_id="cd",
+                          candidate_slug="slug", candidate_title="T")
+    proj = Project(id=f"proj_r1_{abs(hash(debug_reason)) % 10000}", brief=brief,
+                   precursors=[precursor],
+                   selected_precursor_campaign_id="cx")
+    store.save_project(proj)
+    ctrl = ProjectController(cfg, store, budget=None, llm=MagicMock())
+    ctrl.llm.call.return_value.content = "(diagnostic)"
+    fake_debug = SimpleNamespace(
+        success=False, phase="phase_a", rounds_a=2, rounds_b=0,
+        reason=debug_reason, error="boom", log="log tail",
+        metrics={}, results_dir=None)
+    with patch.object(ctrl, "_build_coding_agent", return_value=MagicMock()), \
+         patch.object(ctrl, "_p2_code_gen", return_value=tmp_path / "code"), \
+         patch.object(ctrl, "_p2_execute", return_value=fake_debug):
+        out = ctrl._run_p2_batch(proj)
+    return out, store
+
+
 def _make_project(store, brief):
     from haa.models import Project, Phase
     from haa.models import Brief as B
@@ -88,22 +119,48 @@ def test_r1_environment_sets_hold_not_moribund(tmp_path):
     assert triage[0].payload.get("category") == "environment"
 
 
+def test_r1_routing_assist_hold_via_run_p2_batch(tmp_path):
+    """D3 三态路由①：reason=assist_hold → 真实 _run_p2_batch 路由进 HOLD。"""
+    out, store = _drive_run_p2_batch(tmp_path, "assist_hold")
+    assert out.status == ProjectStatus.HOLD
+    assert out.hold_reason == "assist_hold"
+    assert out.status != ProjectStatus.MORIBUND
+    assert any(e.event_type == "hold_entered"
+               for e in store.list_events(out.id))
+
+
+def test_r1_routing_hold_detected_via_run_p2_batch(tmp_path):
+    """D3 三态路由②：reason=hold_detected → HOLD（等人）。"""
+    out, _ = _drive_run_p2_batch(tmp_path, "hold_detected")
+    assert out.status == ProjectStatus.HOLD
+    assert out.hold_reason == "hold_detected"
+    assert out.status != ProjectStatus.MORIBUND
+
+
+def test_r1_routing_environment_issue_via_run_p2_batch(tmp_path):
+    """D3 三态路由③：reason=environment_issue → HOLD（环境重配）。"""
+    out, _ = _drive_run_p2_batch(tmp_path, "environment_issue")
+    assert out.status == ProjectStatus.HOLD
+    assert out.hold_reason == "environment_issue"
+    assert out.status != ProjectStatus.MORIBUND
+
+
 def test_r1_other_failure_goes_to_moribund(tmp_path):
-    """真修不动→MORIBUND（不变路径）。"""
-    from haa.state import StateStore
-    from haa.project_controller import ProjectController
-    cfg = _cfg(tmp_path)
-    store = StateStore(tmp_path / "t.db")
-    brief = Brief(title="T", problem_area="P")
-    proj = _make_project(store, brief)
-    ctrl = ProjectController(cfg, store, budget=None, llm=MagicMock())
-    assert ProjectStatus.MORIBUND != ProjectStatus.HOLD  # 语义区分
+    """D3 整改：真驱动 reason 路由（_run_p2_batch + 普通失败）→ 进
+    _set_moribund_p2、状态 MORIBUND——不再只断言枚举不等。"""
+    out, store = _drive_run_p2_batch(tmp_path, "phase_a_circuit_breaker")
+    assert out.status == ProjectStatus.MORIBUND
+    assert out.status != ProjectStatus.HOLD
+    assert out.moribund_reason.startswith("cap:")  # C1 枚举映射
+    assert out.moribund_history                   # 诊断史入档
+    assert not [e for e in store.list_events(out.id)
+                if e.event_type == "hold_entered"]
 
 
 # ========== R2: ANALYZE 恢复入口分流 ==========
 
 def test_r2_analyze_on_resume_goes_to_analyze(tmp_path):
-    """features.analyze=true → 恢复从 ANALYZE 进入。"""
+    """D3 整改：features.analyze=true → 真驱动 _resume 断言恢复入 ANALYZE。"""
     from haa.pipeline import Pipeline, StageName
     from haa.state import StateStore
     from haa.models import CampaignStatus
@@ -115,19 +172,27 @@ def test_r2_analyze_on_resume_goes_to_analyze(tmp_path):
     store.save_campaign(camp)
     pipe = Pipeline(cfg, store, MagicMock(), llm=MagicMock(),
                     stages={s: MagicMock() for s in StageName})
-    # 模拟 _resume 逻辑（不需要完整 run_campaign）
-    # 验证恢复入口分流
-    assert cfg.harness.feature("analyze") is True
-    # 代码路径：_resume → stage 分支
-    # AWAITING_HUMAN_REVIEW + analyze=True → ANALYZE
-    from haa.pipeline import CampaignStatus as PC
-    assert camp.status == PC.AWAITING_HUMAN_REVIEW
+    snap = store.restore(camp.id)
+    context, stage = pipe._resume(camp, snap, brief)
+    assert stage == StageName.ANALYZE  # 生产入口分流：analyze 开 → ANALYZE
 
 
 def test_r2_analyze_off_resume_goes_to_write(tmp_path):
-    """features.analyze=false → 恢复从 WRITE 进入（零行为回归）。"""
+    """D3 整改：features.analyze=false → 真驱动 _resume 断言恢复入 WRITE。"""
+    from haa.pipeline import Pipeline, StageName
+    from haa.state import StateStore
+    from haa.models import CampaignStatus
     cfg = _cfg(tmp_path, analyze=False)
-    assert cfg.harness.feature("analyze") is False
+    store = StateStore(tmp_path / "t.db")
+    brief = Brief(title="T", problem_area="P")
+    camp = store.create_campaign(brief)
+    camp.status = CampaignStatus.AWAITING_HUMAN_REVIEW
+    store.save_campaign(camp)
+    pipe = Pipeline(cfg, store, MagicMock(), llm=MagicMock(),
+                    stages={s: MagicMock() for s in StageName})
+    snap = store.restore(camp.id)
+    context, stage = pipe._resume(camp, snap, brief)
+    assert stage == StageName.WRITE  # 零行为回归：关 → WRITE
 
 
 # ========== R3: ANALYZE/PILOT abort_candidate → kill ==========
@@ -254,10 +319,14 @@ def test_r5_analyze_done_event(tmp_path):
     assert (done[0].cost_usd or 0) == 0  # 不带 cost（默认 0.0 非注入）
 
 
-# ========== R9: p2_triage 开关 ==========
+# ========== R9: p2_triage 开关（D3 整改：注册表断言，非空断言） ==========
 
 def test_r9_triage_feature_default_off():
-    cfg = _cfg(Path("/tmp"))
+    """C2 注册后：default.yaml 注册表含 p2_triage 且默认 false。"""
+    from haa.config import load_config
+
+    cfg = load_config()  # 无 HAA_CONFIG 时取 config/default.yaml
+    assert ("p2_triage", False) in cfg.harness.features
     assert cfg.harness.feature("p2_triage") is False
 
 

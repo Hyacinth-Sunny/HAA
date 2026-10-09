@@ -724,3 +724,36 @@ def test_c2_phase_a_checkpoint_reports_real_rounds(tmp_path, monkeypatch):
     result = session.run()
     assert result.reason == "hold_detected"
     assert result.rounds_a == 0  # D2 语义：真实已执行轮数（检查点在轮首）
+
+
+# ========== D2: EACCES 签名匹配 Python 原生 traceback ==========
+
+def test_d2_eaces_signature_matches_python_traceback():
+    """PermissionError: [Errno 13] → assist；裸 EACCES 不再命中。"""
+    from haa.p2revise import triage_failure
+
+    py_tb = ("Traceback (most recent call last):\n"
+             '  File "main.py", line 3, in <module>\n'
+             "PermissionError: [Errno 13] Permission denied: '/etc/hosts'")
+    v = triage_failure(py_tb)
+    assert v["category"] == "assist"
+
+    # node 风格字面 EACCES（无 permission denied 字样）不再误命中 → 默认 code
+    v2 = triage_failure("Error: EACCES: connection refused")
+    assert v2["category"] == "code"
+
+
+# ========== D1: 楼层化挂账台账锚定 ==========
+
+def test_d1_floor_ledger_lists_analyze_md():
+    """AGENTS.md 8② 台账列 prompts/analyze.md（防台账再度蒸发）。"""
+    from haa.config import _PROJECT_ROOT
+
+    agents = (_PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "楼层化挂账台账" in agents
+    assert "prompts/analyze.md" in agents
+    # 台账 8 件齐全（批次18/12/6/5/4 新增）
+    for f in ("review/external.md", "seek_direction.md", "seek_diverge.md",
+              "pilot.md", "seek_anchor.md", "novelty_anchor.md",
+              "grade_anchor.md"):
+        assert f in agents

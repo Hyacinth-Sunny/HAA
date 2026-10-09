@@ -77,7 +77,7 @@ ref/            其他自动科研工作流参考资料（AutoSci · DSH/deepsee
 5. cost 记账半盲（tokens 可见、$ 仍 0，deepseek 流式不回 usage）
 6. 均分制双刃（低分 correctness 可被拉回过审）
 7. 用户待确认简报条款："任务一使命显式化"（8-29 后）
-8. **大修 M0 兼容挂账两件（用户 2026-10-07 指定，工具部分开发完毕后必须清账）**：①工具桥接退役——`haa/harness/tools_bridge.py` 与 `haa/llm/tools.py` 旧注册表在 16 工具逐个迁入 `haa/harness/tools/` 后删除；②提示词"楼层化"投稿——各 stage 的 Jinja2 模板与 `_brief_block` 字符串拼接改为向 `haa/harness/prompt_sections.py` 楼层注册表投稿（楼层 200+，简报铁律块归楼层 0），`haa/prompts.py` 静态渲染通道随之退役
+8. **大修 M0 兼容挂账两件（用户 2026-10-07 指定，工具部分开发完毕后必须清账）**：①工具桥接退役——`haa/harness/tools_bridge.py` 与 `haa/llm/tools.py` 旧注册表在 16 工具逐个迁入 `haa/harness/tools/` 后删除；②提示词"楼层化"投稿——各 stage 的 Jinja2 模板与 `_brief_block` 字符串拼接改为向 `haa/harness/prompt_sections.py` 楼层注册表投稿（楼层 200+，简报铁律块归楼层 0），`haa/prompts.py` 静态渲染通道随之退役。**楼层化挂账台账（批次18-2 D1 立账，`git log --diff-filter=A -- prompts/` 可核）**——大修新增提示词 8 件待迁：`prompts/analyze.md`（批次18）、`prompts/review/external.md`（批次12）、`prompts/seek_direction.md`＋`prompts/seek_diverge.md`（批次6）、`prompts/pilot.md`（批次5）、`prompts/seek_anchor.md`＋`prompts/novelty_anchor.md`＋`prompts/grade_anchor.md`（批次4）；存量模板（10-06 基线件）随 8② 整体迁移清偿
 
 8. 语言润色模块（OpenClaw smoke10 检视建议不增设；用户 2026-10-08 定：**属 P3 部分，记账**——P3 成稿阶段若 quality 失分以措辞为主，在 P3 成稿前接入，REFINE 专注论证）
 9. **峰谷双档计价已工程化**（2026-10-08 用户提供官方窗口）：DeepSeek 高峰=工作日 9-12/14-18、GLM 高峰=工作日 14-18（北京时间，其余空闲）；client 按北京时间判档取 `llm.pricing` 主档/`*_offpeak` 档；v4-pro 空闲档 0.65/1.90 已配

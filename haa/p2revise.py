@@ -214,7 +214,10 @@ class TriageVerdict(dict):
 _SIGNATURES: list[tuple[str, list[str], str]] = [
     ("assist", [
         r"sudo.*password is required", r"sudo.*no tty",
-        r"sudo.*not in the sudoers", r"EACCES.*permission denied",
+        r"sudo.*not in the sudoers",
+        # D2 批次18-2：改匹配 Python 原生 traceback（去字面 EACCES 前缀——
+        # 真实崩溃输出是 PermissionError: [Errno 13]，不是 node 的 EACCES）
+        r"PermissionError.*[Ee]rrno 13", r"permission denied",
     ], "→ HOLD"),
     ("environment", [
         r"CUDA out of memory", r"torch\.cuda\.is_available.*False",

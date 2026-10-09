@@ -84,4 +84,7 @@ ref/            其他自动科研工作流参考资料（AutoSci · DSH/deepsee
 10. **离线 tokenizer 资产**：`~/actionboard/deepseek_v4_tokenizer`（transformers AutoTokenizer，encode 计数）——在线 usage 可得时不必用；离线/校准场景（如墓穴注入字符→token 折算校准挂账）用此工具
 11. DeepSeek 价目已入配置（2026-10-08 实取，v4-pro 高峰价保守折美元 1.30/3.80）；**模型二选一**：deepseek-v4-pro（现用）或 deepseek-flash（V4.1-Flash，并发 2500、价约 1/3.4，备查折价 0.30/1.15）
 
+11. **备选模型（2026-10-09 用户提供，三类四种）**：GPT-6.1-Sol/GPT-6-Astra、Claude-Opus-5-5、Grok-4.7——统一端点 `api.gpt.ge`，key 在 `data/gptge_api.env`（gitignored，600）；GPT-6-Astra 最强但最贵（日后主模型升级备选）；当前主模型+子代理均 deepseek-flash（V4.1-Flash 与 V4-Pro 能力关系未知，先实测 Flash）
+12. **沙箱相对路径逃逸已修复**（GPT-6.1-Sol /init 发现，P0 安全）：文件工具相对路径原不锚定沙箱根，模型可读写仓库任意文件（含密钥）——修复为锚定+resolve 后出界拒绝，5 回归测试
+
 完整 v1.1 议程见 `MDs/HAA项目说明书.md` 第七节。

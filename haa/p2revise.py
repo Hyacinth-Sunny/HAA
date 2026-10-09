@@ -258,7 +258,28 @@ KILL_REASON_ENUMS = frozenset({
 
 
 def validate_kill_reason(reason: str) -> bool:
-    return reason in KILL_REASON_ENUMS or reason.startswith("legacy:")
+    """C1 批次18-2：支持 ``"<枚举>:<自由文本>"`` 格式（读方按前缀取）。
+
+    裸枚举（存量）与 ``legacy:`` 前缀（存量自由文本兼容）保持通过。
+    """
+    head = reason.split(":", 1)[0].strip()
+    return (reason in KILL_REASON_ENUMS
+            or head in KILL_REASON_ENUMS
+            or head == "legacy")
+
+
+def map_debug_reason_to_kill(reason: str) -> str:
+    """C1 批次18-2：DebugSession failure reason → kill_reason 枚举前缀。
+
+    轮数帽耗尽（circuit_breaker）→ ``cap``；预算耗尽 → ``budget``；
+    其余（修不动 / 早停等代码类失败）→ ``code``。
+    """
+    r = reason or ""
+    if "budget" in r:
+        return "budget"
+    if "circuit_breaker" in r:
+        return "cap"
+    return "code"
 
 
 # ============================================================================ #

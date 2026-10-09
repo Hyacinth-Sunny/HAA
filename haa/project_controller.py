@@ -489,6 +489,8 @@ class ProjectController:
             max_hard_error_rounds=hp.max_hard_rounds if hasattr(hp, "max_hard_rounds") else 15,
             max_logic_error_rounds=hp.max_logic_rounds if hasattr(hp, "max_logic_rounds") else 5,
             auto_approve_a_to_b=True,
+            # C2 批次18-2：分诊+HOLD 检查点开关（features.p2_triage，默认关）
+            triage_enabled=self.config.harness.feature("p2_triage"),
         )
         transport = self._build_p2_transport()
         session = DebugSession(
@@ -601,12 +603,17 @@ class ProjectController:
             logger.warning("P2 diagnostic LLM call failed: %s", exc)
             diagnostic = f"(LLM diagnostic unavailable) {debug_result.reason}: {debug_result.error}"
 
-        project.moribund_reason = f"p2_{debug_result.reason}"
+        # C1 批次18-2：kill_reason 枚举映射——moribund_reason 格式
+        # "<枚举>:<自由文本>"（读方按前缀取；存量自由文本经 legacy: 兼容）
+        from haa.p2revise import map_debug_reason_to_kill
+        kill_enum = map_debug_reason_to_kill(debug_result.reason)
+        kill_reason = f"{kill_enum}:p2_{debug_result.reason}"
+        project.moribund_reason = kill_reason
         project.moribund_diagnostic = diagnostic
         project.moribund_history.append(
             MoribundEntry(
                 phase=project.phase.value,
-                reason=f"p2_{debug_result.reason}",
+                reason=kill_reason,
                 diagnostic=diagnostic,
             )
         )

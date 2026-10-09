@@ -234,7 +234,7 @@ def test_a4_triage_event_per_round(tmp_path):
     session = DebugSession(
         transport=_CrashTransport(),
         coding_agent=MagicMock(),
-        config=DebugConfig(max_hard_error_rounds=2),
+        config=DebugConfig(max_hard_error_rounds=2, triage_enabled=True),
         code_dir=tmp_path / "code",
         work_dir=tmp_path / "work",
         campaign_id="c1",
@@ -260,7 +260,7 @@ def test_a4_event_sink_failure_does_not_break_loop(tmp_path):
     session = DebugSession(
         transport=_CrashTransport(),
         coding_agent=MagicMock(),
-        config=DebugConfig(max_hard_error_rounds=1),
+        config=DebugConfig(max_hard_error_rounds=1, triage_enabled=True),
         code_dir=tmp_path / "code",
         work_dir=tmp_path / "work",
         campaign_id="c1",
@@ -529,3 +529,198 @@ def test_b3_controller_passes_assist_note(tmp_path, monkeypatch):
     monkeypatch.setattr(ctrl, "_build_p2_transport", lambda: MagicMock())
     ctrl._p2_execute(proj, tmp_path / "code", MagicMock(), tmp_path)
     assert captured["assist_context"] == "swap 分区不足，请扩容"
+
+
+# ========== C1: kill_reason 枚举映射 ==========
+
+def _drive_moribund(tmp_path, reason: str):
+    """真驱动 _set_moribund_p2（LLM 边界 mock）→ 返回 (project, store)。"""
+    from haa.models import Project
+    from haa.project_controller import ProjectController
+    from haa.state import StateStore
+
+    cfg = _cfg(tmp_path)
+    store = StateStore(tmp_path / "t.db")
+    brief = Brief(title="T", problem_area="P")
+    proj = Project(id=f"proj_c1_{abs(hash(reason)) % 1000}", brief=brief)
+    store.save_project(proj)
+    ctrl = ProjectController(cfg, store, budget=None, llm=MagicMock())
+    ctrl.llm.call.return_value.content = "(diagnostic text)"
+    precursor = SimpleNamespace(
+        campaign_id="cx", candidate_id="cd", candidate_slug="slug",
+        candidate_title="T", exp_spec={}, paper={})
+    debug = SimpleNamespace(
+        success=False, phase="phase_a", rounds_a=15, rounds_b=0,
+        reason=reason, error="boom", log="log tail", metrics={},
+        results_dir=None)
+    out = ctrl._set_moribund_p2(proj, debug, precursor)
+    return out, store
+
+
+def test_c1_kill_reason_cap_for_circuit_breaker(tmp_path):
+    """轮数帽耗尽（circuit_breaker）→ 枚举 cap。"""
+    from haa.models import ProjectStatus
+
+    proj, _ = _drive_moribund(tmp_path, "phase_a_circuit_breaker")
+    assert proj.status == ProjectStatus.MORIBUND
+    assert proj.moribund_reason.startswith("cap:")
+    assert "phase_a_circuit_breaker" in proj.moribund_reason  # 自由文本保留
+    assert proj.moribund_history[-1].reason == proj.moribund_reason
+
+
+def test_c1_kill_reason_budget(tmp_path):
+    """预算耗尽 → 枚举 budget。"""
+    proj, _ = _drive_moribund(tmp_path, "budget_exhausted")
+    assert proj.moribund_reason.startswith("budget:")
+
+
+def test_c1_kill_reason_code_for_early_stop(tmp_path):
+    """早停（修不动）→ 枚举 code。"""
+    proj, _ = _drive_moribund(tmp_path, "phase_b_early_stop")
+    assert proj.moribund_reason.startswith("code:")
+
+
+def test_c1_validate_kill_reason_new_format():
+    """validate_kill_reason 对新格式/存量/legacy 的判决。"""
+    from haa.p2revise import validate_kill_reason
+
+    assert validate_kill_reason("cap:p2_phase_a_circuit_breaker")
+    assert validate_kill_reason("budget:p2_budget_exhausted")
+    assert validate_kill_reason("code:p2_phase_b_early_stop")
+    assert validate_kill_reason("legacy:queue ran dry 2026-08")
+    assert validate_kill_reason("viewpoint")            # 存量裸枚举
+    assert not validate_kill_reason("pilot: not_supported")  # 非法前缀拒绝
+
+
+# ========== C2: p2_triage 开关 ==========
+
+def test_c2_switch_registered_default_off():
+    """default.yaml 注册表含 p2_triage 且默认 false；DebugConfig 同步默认。"""
+    from haa.config import load_config
+    from haa.p2.debug_session import DebugConfig
+
+    cfg = load_config()  # 无 HAA_CONFIG 时取 config/default.yaml
+    assert ("p2_triage", False) in cfg.harness.features
+    assert cfg.harness.feature("p2_triage") is False
+    assert DebugConfig().triage_enabled is False
+
+
+class _SudoCrashTransport:
+    """伪执行后端：崩溃且日志带 sudo 密码签名（assist 类特征）。"""
+
+    def deploy(self, code_dir, run_id):
+        return Path(code_dir)
+
+    def run(self, exec_dir, command, timeout=None):
+        from haa.p2.transport import RunResult
+        return RunResult(exit_code=1, stdout="",
+                         stderr="sudo: a password is required")
+
+    def download_results(self, exec_dir, results_dir):
+        pass
+
+
+def test_c2_triage_off_zero_change(tmp_path, monkeypatch):
+    """开关关：sudo 签名也不触发 assist HOLD——纯修复循环到断路器
+    （与批次15 之前行为一致；同输入同轮数不提前退出修复循环）。"""
+    camps = _isolate_campaigns_dir(monkeypatch, tmp_path)
+    from haa.p2.debug_session import DebugConfig, DebugSession
+
+    events: list[tuple[str, dict]] = []
+    agent = MagicMock()
+    session = DebugSession(
+        transport=_SudoCrashTransport(),
+        coding_agent=agent,
+        config=DebugConfig(max_hard_error_rounds=3),  # triage_enabled=False
+        code_dir=tmp_path / "code",
+        work_dir=tmp_path / "work",
+        campaign_id="c_off",
+        event_sink=lambda etype, payload: events.append((etype, payload)),
+    )
+    result = session.run()
+    # 旧出口序列：不提前退出——3 轮全走修复，断路器收尾
+    assert result.reason == "phase_a_circuit_breaker"
+    assert result.rounds_a == 3
+    assert agent.fix_traceback.call_count == 3
+    assert not events                      # 零分诊事件
+    assert not (camps / "c_off" / "HOLD").exists()  # 未写 HOLD 旗标
+
+
+def test_c2_triage_on_assist_hold(tmp_path, monkeypatch):
+    """开关开：同输入 → 第一轮即 assist HOLD（提前退出修复循环）。"""
+    camps = _isolate_campaigns_dir(monkeypatch, tmp_path)
+    from haa.p2.debug_session import DebugConfig, DebugSession
+
+    agent = MagicMock()
+    session = DebugSession(
+        transport=_SudoCrashTransport(),
+        coding_agent=agent,
+        config=DebugConfig(max_hard_error_rounds=3, triage_enabled=True),
+        code_dir=tmp_path / "code",
+        work_dir=tmp_path / "work",
+        campaign_id="c_on",
+    )
+    result = session.run()
+    assert result.reason == "assist_hold"
+    flag = camps / "c_on" / "HOLD"
+    assert flag.exists()
+    assert "恢复" in flag.read_text(encoding="utf-8")  # 三要素求助请求
+    assert agent.fix_traceback.call_count == 0  # 未进修复循环
+
+
+def test_c2_phase_b_checkpoint(tmp_path, monkeypatch):
+    """phase B 轮间检查点：phase A 执行期间落 HOLD 旗标 → B 轮首安全退出
+    （rounds_b=真实已执行轮数=0）。"""
+    camps = _isolate_campaigns_dir(monkeypatch, tmp_path)
+    from haa.p2.debug_session import DebugConfig, DebugSession
+    from haa.p2.transport import RunResult
+
+    class _FlagDuringPhaseA:
+        def deploy(self, code_dir, run_id):
+            if "_a_" in run_id:  # phase A 执行时落旗标（A 轮首检查已过）
+                from haa.p2revise import set_hold_flag
+                set_hold_flag("c_pb", note="user paused",
+                              campaigns_dir=camps)
+            return Path(code_dir)
+
+        def run(self, exec_dir, command, timeout=None):
+            return RunResult(exit_code=0, stdout="ok")
+
+        def download_results(self, exec_dir, results_dir):
+            pass
+
+    session = DebugSession(
+        transport=_FlagDuringPhaseA(),
+        coding_agent=MagicMock(),
+        config=DebugConfig(max_hard_error_rounds=3,
+                           max_logic_error_rounds=3, triage_enabled=True),
+        code_dir=tmp_path / "code",
+        work_dir=tmp_path / "work",
+        campaign_id="c_pb",
+    )
+    result = session.run()
+    assert not result.success
+    assert result.reason == "hold_detected"
+    assert result.phase == "phase_b"
+    assert result.rounds_a == 1   # phase A 完成了 1 轮
+    assert result.rounds_b == 0   # 检查点在 B 轮首——真实已执行 0 轮
+
+
+def test_c2_phase_a_checkpoint_reports_real_rounds(tmp_path, monkeypatch):
+    """HOLD 在 phase A 轮首命中 → rounds_a=0（真实已执行），非轮号 1。"""
+    camps = _isolate_campaigns_dir(monkeypatch, tmp_path)
+    from haa.p2.debug_session import DebugConfig, DebugSession
+    from haa.p2revise import set_hold_flag
+
+    set_hold_flag("c_r0", note="pre-set", campaigns_dir=camps)
+    session = DebugSession(
+        transport=_SudoCrashTransport(),
+        coding_agent=MagicMock(),
+        config=DebugConfig(max_hard_error_rounds=3, triage_enabled=True),
+        code_dir=tmp_path / "code",
+        work_dir=tmp_path / "work",
+        campaign_id="c_r0",
+    )
+    result = session.run()
+    assert result.reason == "hold_detected"
+    assert result.rounds_a == 0  # D2 语义：真实已执行轮数（检查点在轮首）

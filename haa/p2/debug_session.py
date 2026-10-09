@@ -50,6 +50,9 @@ class DebugConfig:
     early_stop_patience: int = 5  # loss 连续 N 轮发散 → 早停
     entry_command: str = "bash run.sh"
     auto_approve_a_to_b: bool = True  # v0.7：自动通过 A→B 检查点
+    # C2 批次18-2：根因分诊 + 轮间 HOLD 检查点开关（features.p2_triage，
+    # 默认 False）——关时 DebugSession 行为与批次15 之前的纯修复循环一致。
+    triage_enabled: bool = False
 
 
 @dataclass
@@ -165,15 +168,21 @@ class DebugSession:
     # ------------------------------------------------------------------ #
 
     def _run_phase_a(self) -> DebugResult:
-        """循环：deploy → run → 分诊 → 修复/重试（批次18 接线：分诊+HOLD）。"""
+        """循环：deploy → run → 分诊 → 修复/重试（批次18 接线：分诊+HOLD）。
+
+        C2 批次18-2：分诊与轮间 HOLD 检查点全部走 ``triage_enabled``
+        （features.p2_triage）——开关关时与批次15 之前的纯修复循环一致。
+        """
         from haa.p2revise import triage_failure, check_hold_flag, set_hold_flag, build_assist_request
         for round_num in range(1, self.config.max_hard_error_rounds + 1):
-            # 轮间检查点（§2.3.2）：HOLD 标志命中→当前轮跑完安全退出
-            if check_hold_flag(self.campaign_id):
+            # 轮间检查点（§2.3.2）：HOLD 标志命中→不跑当前轮安全退出；
+            # rounds_a 报真实已执行轮数（round_num-1——检查点在轮首）
+            if self.config.triage_enabled and check_hold_flag(self.campaign_id):
                 logger.info("DebugSession %s: HOLD detected at round %d — safe exit",
                             self.campaign_id, round_num)
                 return DebugResult(
-                    success=False, phase="phase_a", rounds_a=round_num,
+                    success=False, phase="phase_a",
+                    rounds_a=max(round_num - 1, 0),
                     reason="hold_detected",
                     error="User HOLD detected between rounds")
 
@@ -193,35 +202,37 @@ class DebugSession:
                     results_dir=run_result.results_dir,
                 )
 
-            # 批次18 挂点1：根因分诊器（§2.2——先分诊再修复）
-            verdict = triage_failure(run_result.combined_log)
-            logger.info("DebugSession %s: triage → %s (%s)",
-                        self.campaign_id, verdict["category"],
-                        "; ".join(verdict["evidence_lines"][:1]))
-            # A4 批次18-2：每轮分诊事件回流（payload=category+evidence_lines）
-            self._emit("triage_verdict", {
-                "category": verdict["category"],
-                "evidence_lines": list(verdict["evidence_lines"][:3]),
-                "phase": "phase_a", "round": round_num,
-            })
-            if verdict["category"] == "assist":
-                # §2.3.4：协助类自动 HOLD（三要素求助请求）
-                set_hold_flag(self.campaign_id,
-                              note=build_assist_request(verdict))
-                logger.warning("DebugSession %s: auto-HOLD (assist)", self.campaign_id)
-                return DebugResult(
-                    success=False, phase="phase_a", rounds_a=round_num,
-                    reason="assist_hold",
-                    error=build_assist_request(verdict))
-            if verdict["category"] == "environment":
-                # §2.2.1：环境类→退出循环走环境重配
-                logger.warning("DebugSession %s: environment issue detected",
-                               self.campaign_id)
-                return DebugResult(
-                    success=False, phase="phase_a", rounds_a=round_num,
-                    reason="environment_issue",
-                    error=run_result.combined_log[-500:])
-            # code/design → 修复循环继续
+            if self.config.triage_enabled:
+                # 批次18 挂点1：根因分诊器（§2.2——先分诊再修复）
+                verdict = triage_failure(run_result.combined_log)
+                logger.info("DebugSession %s: triage → %s (%s)",
+                            self.campaign_id, verdict["category"],
+                            "; ".join(verdict["evidence_lines"][:1]))
+                # A4 批次18-2：每轮分诊事件回流（payload=category+evidence_lines）
+                self._emit("triage_verdict", {
+                    "category": verdict["category"],
+                    "evidence_lines": list(verdict["evidence_lines"][:3]),
+                    "phase": "phase_a", "round": round_num,
+                })
+                if verdict["category"] == "assist":
+                    # §2.3.4：协助类自动 HOLD（三要素求助请求；单次构造复用）
+                    assist_req = build_assist_request(verdict)
+                    set_hold_flag(self.campaign_id, note=assist_req)
+                    logger.warning("DebugSession %s: auto-HOLD (assist)",
+                                   self.campaign_id)
+                    return DebugResult(
+                        success=False, phase="phase_a", rounds_a=round_num,
+                        reason="assist_hold",
+                        error=assist_req)
+                if verdict["category"] == "environment":
+                    # §2.2.1：环境类→退出循环走环境重配
+                    logger.warning("DebugSession %s: environment issue detected",
+                                   self.campaign_id)
+                    return DebugResult(
+                        success=False, phase="phase_a", rounds_a=round_num,
+                        reason="environment_issue",
+                        error=run_result.combined_log[-500:])
+                # code/design → 修复循环继续
 
             # Hard error → fix.
             logger.warning(
@@ -249,10 +260,23 @@ class DebugSession:
 
     def _run_phase_b(self, rounds_a: int) -> DebugResult:
         """循环：deploy → run(完整) → 下载指标 → 检查合理性 → CC 诊断 → 重试。"""
+        from haa.p2revise import check_hold_flag
+
         prev_loss: float | None = None
         diverge_count = 0
 
         for round_num in range(1, self.config.max_logic_error_rounds + 1):
+            # C2 批次18-2：轮间检查点（与 phase A 同款，同开关）——HOLD 命中
+            # → 安全退出，rounds_b 报真实已执行轮数
+            if self.config.triage_enabled and check_hold_flag(self.campaign_id):
+                logger.info("DebugSession %s: HOLD detected at phase B "
+                            "round %d — safe exit", self.campaign_id, round_num)
+                return DebugResult(
+                    success=False, phase="phase_b", rounds_a=rounds_a,
+                    rounds_b=max(round_num - 1, 0),
+                    reason="hold_detected",
+                    error="User HOLD detected between rounds (phase B)")
+
             run_result = self._execute_round(round_num, phase="b")
 
             if run_result.crashed:

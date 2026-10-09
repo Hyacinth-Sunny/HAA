@@ -214,3 +214,4 @@ harness:
     fallback_acp: false                # D2 降级开关（与 acp.enabled 双确认）
     pilot: false
     analyze: false                       # P3 修订§3.1 ANALYZE 微阶段（批次18）                         # 第三章 §8.2 先导实验微阶段（M2）                # D2 降级开关（与 acp.enabled 双确认）
+    p2_triage: false                     # 第四章修订§2.2 P2 根因分诊+轮间 HOLD 检查点（批次18-2 C2；关=批次15 前纯修复循环）

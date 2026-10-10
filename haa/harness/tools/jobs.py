@@ -45,8 +45,13 @@ VALID_STATES = frozenset(LEGAL_TRANSITIONS)
 
 
 def _spawn_group(shell_command: str, **kwargs):
-    """以独立进程组启动一条 bash 命令（固定参数列表，无字符串拼接）。"""
-    return Popen(["/bin/bash", "-lc", shell_command], stdout=PIPE, stderr=PIPE,
+    """以独立进程组启动一条 bash 命令（固定参数列表，无字符串拼接）。
+
+    不用登录 shell（-l）：工具命令不得依赖用户 profile 初始化链
+    （CI 运行器上 conda init 链在非交互登录下以退出码 1 天折，见
+    test_04 的 CI 失败）；所需环境由白名单 filtered_env 显式传递。
+    """
+    return Popen(["/bin/bash", "-c", shell_command], stdout=PIPE, stderr=PIPE,
                  start_new_session=True, **kwargs)
 
 

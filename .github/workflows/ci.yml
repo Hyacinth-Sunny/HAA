@@ -30,6 +30,8 @@ jobs:
       - name: Run tests
         run: |
           conda activate haa
+          { /bin/bash -lc 'echo probe_login_ok; exit 3'; echo "login_probe_exit=$?"; \
+            /bin/bash -c  'echo probe_plain_ok; exit 3'; echo "plain_probe_exit=$?"; } > probe.txt 2>&1 || true
           set -o pipefail
           python -m pytest --tb=short -ra 2>&1 | tee pytest_output.log
           st=${PIPESTATUS[0]}
@@ -58,6 +60,7 @@ jobs:
           git checkout -q -B ci-logs
           git add -f pytest_output.log
           [ -f ci_env.txt ] && git add -f ci_env.txt
+          [ -f probe.txt ] && git add -f probe.txt
           git commit -q -m "CI failure log $(date -u +%FT%TZ)" || true
           git push -f origin ci-logs
       - name: Memory bank lint

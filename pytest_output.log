@@ -1,0 +1,41 @@
+.....................F..........................................ssss.... [  8%]
+.............................s.......................................... [ 17%]
+........................................................................ [ 25%]
+........................................................................ [ 34%]
+........................................................................ [ 42%]
+........................................................................ [ 51%]
+........................................................................ [ 60%]
+........................................................................ [ 68%]
+........................................................................ [ 77%]
+........................................................................ [ 85%]
+........................................................................ [ 94%]
+...............................................                          [100%]
+=================================== FAILURES ===================================
+__________________ test_04_nonzero_exit_marker_not_tool_error __________________
+tests/harness_tools/test_m1_exec_bash.py:49: in test_04_nonzero_exit_marker_not_tool_error
+    assert "[exit code: 3]" in r.content
+E   AssertionError: assert '[exit code: 3]' in '(no output)\n[exit code: 1]'
+E    +  where '(no output)\n[exit code: 1]' = ToolResult(content='(no output)\n[exit code: 1]', meta={'exit_code': 1, 'timed_out': False, 'truncated': False, 'duration_s': 0.803513941999995, 'chars': 26}).content
+=============================== warnings summary ===============================
+../../../../../usr/share/miniconda/envs/haa/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /usr/share/miniconda/envs/haa/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_stages.py::test_review_aggregates_three_scores_accept
+  /usr/share/miniconda/envs/haa/lib/python3.12/site-packages/pydantic/_internal/_generate_schema.py:1475: UserWarning: Item 'summary' on TypedDict class 'ChatCompletionReasoningItem' is using the `ReadOnly` qualifier. Pydantic will not protect items from any mutation on dictionary instances.
+    warnings.warn(
+
+tests/test_tools.py::test_calc_isolated_off_main_thread
+  /usr/share/miniconda/envs/haa/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2575) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] tests/harness_tools/test_m1_sandbox.py:203: docker 或 p2-sandbox-base 镜像不可用（e2e 门控同 DSH）
+SKIPPED [1] tests/harness_tools/test_m1_sandbox.py:210: docker 或 p2-sandbox-base 镜像不可用（e2e 门控同 DSH）
+SKIPPED [1] tests/harness_tools/test_m1_sandbox.py:217: docker 或 p2-sandbox-base 镜像不可用（e2e 门控同 DSH）
+SKIPPED [1] tests/harness_tools/test_m1_sandbox.py:225: docker 或 p2-sandbox-base 镜像不可用（e2e 门控同 DSH）
+SKIPPED [1] tests/harness_tools/test_m2_pilot.py:117: docker/镜像不可用
+FAILED tests/harness_tools/test_m1_exec_bash.py::test_04_nonzero_exit_marker_not_tool_error - AssertionError: assert '[exit code: 3]' in '(no output)\n[exit code: 1]'
+ +  where '(no output)\n[exit code: 1]' = ToolResult(content='(no output)\n[exit code: 1]', meta={'exit_code': 1, 'timed_out': False, 'truncated': False, 'duration_s': 0.803513941999995, 'chars': 26}).content
+1 failed, 833 passed, 5 skipped, 3 warnings in 53.97s

@@ -146,8 +146,17 @@ def store(tmp_path):
 
 
 @pytest.fixture
-def cfg():
-    return default_config()
+def cfg(tmp_path):
+    # 测试隔离（CI lint 修复）：记忆库落 tmp——project_root 为只读 property 且
+    # MemoryConfig 为 frozen dataclass，故用 dataclasses.replace 重建；Path 拼接
+    # 中右操作数为绝对路径时胜出，memory_dir 指到 tmp 即可隔离，避免测试把
+    # scout-idea 脏页写进真实 data/memory（CI 的 memory lint 步骤会被打挂）。
+    import dataclasses
+    c = default_config()
+    c = dataclasses.replace(
+        c, memory=dataclasses.replace(c.memory,
+                                      memory_dir=str(tmp_path / "memory")))
+    return c
 
 
 @pytest.fixture

@@ -24,6 +24,7 @@ dependencies = [
     "python-multipart>=0.0.7",
     "sympy>=1.12",
     "matplotlib>=3.8",
+    "markdown>=3.5",
 ]
 
 [project.optional-dependencies]

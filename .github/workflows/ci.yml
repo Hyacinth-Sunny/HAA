@@ -27,7 +27,20 @@ jobs:
       - name: Run tests
         run: |
           conda activate haa
-          python -m pytest --tb=short -q
+          set -o pipefail
+          python -m pytest --tb=short -q 2>&1 | tee pytest_output.log
+          st=${PIPESTATUS[0]}
+          if [ "$st" -ne 0 ]; then
+            echo "## Failed tests" >> $GITHUB_STEP_SUMMARY
+            grep -E "^(FAILED|ERROR)" pytest_output.log | head -20 | while read -r line; do
+              echo "::error::$line"
+              echo "- \`$line\`" >> $GITHUB_STEP_SUMMARY
+            done
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -30 pytest_output.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit $st
+          fi
       - name: Memory bank lint
         run: |
           conda activate haa

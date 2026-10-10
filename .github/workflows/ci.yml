@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: write
+
 defaults:
   run:
     shell: bash -l {0}
@@ -40,8 +43,23 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
             tail -40 pytest_output.log >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
+            { date -u; python -V; nproc; echo "TZ=$TZ LANG=$LANG HOME=$HOME";
+              env | grep -E '^(CI|GITHUB_ACTIONS|RUNNER_ARCH|RUNNER_OS)' | head -6;
+              echo '--- pip freeze ---'; pip freeze;
+              echo '--- data/ dirs ---'; find data -maxdepth 2 -type d 2>/dev/null | head -20;
+            } > ci_env.txt 2>&1 || true
             exit $st
           fi
+      - name: Publish failure log
+        if: failure()
+        run: |
+          git config user.name "haa-ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git checkout -q -B ci-logs
+          git add -f pytest_output.log
+          [ -f ci_env.txt ] && git add -f ci_env.txt
+          git commit -q -m "CI failure log $(date -u +%FT%TZ)" || true
+          git push -f origin ci-logs
       - name: Memory bank lint
         run: |
           conda activate haa
